@@ -1,0 +1,27 @@
+
+# Java class files
+*.class
+
+# Windows thumbnail db
+Thumbs.db
+
+# OSX files
+.DS_Store
+
+# Eclipse project files
+.classpath
+.project
+
+# IntelliJ
+*.iml
+.idea
+/sync/app/build/
+
+#Maven target
+target/
+
+# Project
+/sync/app/test
+
+#test data
+data/
