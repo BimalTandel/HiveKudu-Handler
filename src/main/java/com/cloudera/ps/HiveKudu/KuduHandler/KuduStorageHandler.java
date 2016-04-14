@@ -26,6 +26,7 @@ import org.kududb.Schema;
 import org.kududb.client.KuduClient;
 import org.kududb.client.CreateTableOptions;
 import org.kududb.mapred.KuduTableInputFormat;
+import org.kududb.mapred.KuduTableOutputFormat;
 
 import java.util.*;
 
@@ -106,9 +107,16 @@ public class KuduStorageHandler extends DefaultStorageHandler
         /*
         TODO: Implement reading provided properties and load jobProperties
          */
+
+
         String tblName = tableDesc.getTableName();
         Properties tblProps = tableDesc.getProperties();
         String columnNames = tblProps.getProperty(Constants.LIST_COLUMNS);
+
+        LOG.warn("kudu.mapreduce.master.addresses" + tblProps.getProperty("kudu.master_addresses"));
+
+        jobProperties.put("kudu.mapreduce.output.table", tblProps.getProperty("kudu.table_name"));
+        jobProperties.put("kudu.mapreduce.master.addresses", tblProps.getProperty("kudu.master_addresses"));
     }
 
     @Override
@@ -125,7 +133,7 @@ public class KuduStorageHandler extends DefaultStorageHandler
 
     @Override
     public Class<? extends OutputFormat> getOutputFormatClass() {
-        return HiveKuduTableOutputFormat.class;
+        return KuduTableOutputFormat.class;
     }
 
     @Override
@@ -176,6 +184,7 @@ public class KuduStorageHandler extends DefaultStorageHandler
 
         LOG.warn("I was called : preCreateTable");
 
+
         boolean isExternal = MetaStoreUtils.isExternalTable(tbl);
 
         if (tbl.getSd().getLocation() != null) {
@@ -189,6 +198,8 @@ public class KuduStorageHandler extends DefaultStorageHandler
         String tablename = getKuduTableName(tbl);
 
         LOG.debug("Tablename is " + tablename);
+
+        LOG.warn(tbl.getSd().getSerdeInfo().toString());
 
         try {
             List<String> keyColumns = Arrays.asList(tbl.getParameters().get("kudu.key_columns").split("\\s*,\\s*"));
@@ -218,7 +229,6 @@ public class KuduStorageHandler extends DefaultStorageHandler
             CreateTableOptions createTableOptions = new CreateTableOptions();
 
             //add support for partition and buckets
-
             getKuduClient().createTable(tablename, schema, createTableOptions);
         } catch (Exception se) {
             LOG.error("Error creating Kudu table: " + tablename);

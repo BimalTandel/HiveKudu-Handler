@@ -39,6 +39,12 @@ public class KuduWritable implements Writable {
         return columnValues[i];
     }
 
+    public Type getType(int i) { return columnTypes[i]; }
+
+    public int getColCount() {
+        return this.columnTypes.length;
+    }
+
     @Override
     public void readFields(DataInput in) throws IOException {
         int size = in.readInt();

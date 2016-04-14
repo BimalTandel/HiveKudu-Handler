@@ -3,43 +3,31 @@ package org.kududb.mapred;
 /**
  * Created by bimal on 4/13/16.
  */
+import com.cloudera.ps.HiveKudu.KuduHandler.KuduWritable;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.hive.serde2.SerDeException;
+import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapred.RecordWriter;
+import org.apache.hadoop.mapred.Reporter;
+import org.apache.hadoop.util.Progressable;
+import org.kududb.Schema;
 import org.kududb.annotations.InterfaceAudience;
 import org.kududb.annotations.InterfaceStability;
 import org.kududb.client.*;
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.NullWritable;
-import org.apache.hadoop.mapreduce.JobContext;
-import org.apache.hadoop.mapreduce.OutputCommitter;
 import org.apache.hadoop.mapred.OutputFormat;
-import org.apache.hadoop.mapreduce.RecordWriter;
-import org.apache.hadoop.mapreduce.TaskAttemptContext;
-import org.kududb.mapreduce.KuduTableOutputCommitter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * <p>
- * Use {@link
- * KuduTableMapReduceUtil.TableOutputFormatConfigurator}
- * to correctly setup this output format, then {@link
- * KuduTableMapReduceUtil#getTableFromContext(org.apache.hadoop.mapreduce.TaskInputOutputContext)}
- * to get a KuduTable.
- * </p>
- *
- * <p>
- * Hadoop doesn't have the concept of "closing" the output format so in order to release the
- * resources we assume that once either
- * {@link #checkOutputSpecs(org.apache.hadoop.mapreduce.JobContext)}
- * or {@link TableRecordWriter#close(org.apache.hadoop.mapreduce.TaskAttemptContext)}
- * have been called that the object won't be used again and the KuduClient is shut down.
- * </p>
- */
+
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
 public class KuduTableOutputFormat implements OutputFormat, Configurable {
@@ -87,6 +75,7 @@ public class KuduTableOutputFormat implements OutputFormat, Configurable {
 
     @Override
     public void setConf(Configuration entries) {
+        LOG.warn("I was called : setConf");
         this.conf = new Configuration(entries);
 
         String masterAddress = this.conf.get(MASTER_ADDRESSES_KEY);
@@ -94,6 +83,8 @@ public class KuduTableOutputFormat implements OutputFormat, Configurable {
         this.operationTimeoutMs = this.conf.getLong(OPERATION_TIMEOUT_MS_KEY,
                 AsyncKuduClient.DEFAULT_OPERATION_TIMEOUT_MS);
         int bufferSpace = this.conf.getInt(BUFFER_ROW_COUNT_KEY, 1000);
+
+        LOG.warn(" the master address here is " + masterAddress);
 
         this.client = new KuduClient.KuduClientBuilder(masterAddress)
                 .defaultOperationTimeoutMs(operationTimeoutMs)
@@ -116,6 +107,7 @@ public class KuduTableOutputFormat implements OutputFormat, Configurable {
     }
 
     private void shutdownClient() throws IOException {
+        LOG.warn("I was called : shutdownClient");
         try {
             client.shutdown();
         } catch (Exception e) {
@@ -124,50 +116,138 @@ public class KuduTableOutputFormat implements OutputFormat, Configurable {
     }
 
     public static KuduTable getKuduTable(String multitonKey) {
+        LOG.warn("I was called : getKuduTable");
         return MULTITON.get(multitonKey).getKuduTable();
     }
 
     private KuduTable getKuduTable() {
+        LOG.warn("I was called : getKuduTable");
         return this.table;
     }
 
     @Override
     public Configuration getConf() {
+        LOG.warn("I was called : getConf");
         return conf;
     }
 
-    /*
+
     @Override
-    public RecordWriter<NullWritable, Operation> getRecordWriter(TaskAttemptContext taskAttemptContext)
-            throws IOException, InterruptedException {
+    public RecordWriter getRecordWriter(FileSystem fileSystem, JobConf jobConf, String s, Progressable progressable)
+            throws IOException {
+        LOG.warn("I was called : getRecordWriter");
         return new TableRecordWriter(this.session);
     }
 
 
     @Override
-    public void checkOutputSpecs(JobContext jobContext) throws IOException, InterruptedException {
+    public void checkOutputSpecs(FileSystem fileSystem, JobConf jobConf) throws IOException {
+        LOG.warn("I was called : checkOutputSpecs");
         shutdownClient();
     }
 
+    /*
     @Override
     public OutputCommitter getOutputCommitter(TaskAttemptContext taskAttemptContext) throws
             IOException, InterruptedException {
         return new KuduTableOutputCommitter();
     }
     */
-    protected class TableRecordWriter extends RecordWriter<NullWritable, Operation> {
+
+    protected class TableRecordWriter implements RecordWriter<NullWritable, KuduWritable> {
 
         private final AtomicLong rowsWithErrors = new AtomicLong();
         private final KuduSession session;
 
         public TableRecordWriter(KuduSession session) {
+            LOG.warn("I was called : TableRecordWriter");
             this.session = session;
         }
 
+        private Operation getOperation(KuduWritable kuduWritable)
+            throws IOException{
+            LOG.warn("I was called : getOperation");
+            int recCount = kuduWritable.getColCount();
+            Schema schema = table.getSchema();
+            int colCount = schema.getColumnCount();
+            if (recCount != colCount) {
+                throw new IOException("Kudu table column count of " + colCount + " does not match "
+                        + "with Serialized object record count of " + recCount);
+            }
+            //TODO: Find out if the record needs to be updated or deleted.
+            //Assume only insert
+
+            Insert insert = table.newInsert();
+            PartialRow row = insert.getRow();
+
+            for (int i = 0; i < recCount; i++) {
+                Object obj = kuduWritable.get(i);
+                switch(kuduWritable.getType(i)) {
+                    case STRING: {
+                        String s = obj.toString();
+                        row.addString(i, s);
+                        break;
+                    }
+                    case FLOAT: {
+                        Float f = (Float) obj;
+                        row.addFloat(i, f);
+                        break;
+                    }
+                    case DOUBLE: {
+                        Double d = (Double) obj;
+                        row.addDouble(i, d);
+                        break;
+                    }
+                    case BOOL: {
+                        Boolean b = (Boolean) obj;
+                        row.addBoolean(i, b);
+                        break;
+                    }
+                    case INT8: {
+                        Byte b = (Byte) obj;
+                        row.addByte(i, b);
+                        break;
+                    }
+                    case INT16: {
+                        Short s = (Short) obj;
+                        row.addShort(i, s);
+                        break;
+                    }
+                    case INT32: {
+                        Integer x = (Integer) obj;
+                        row.addInt(i, x);
+                        break;
+                    }
+                    case INT64: {
+                        Long l = (Long) obj;
+                        row.addLong(i, l);
+                        break;
+                    }
+                    case TIMESTAMP: {
+                        Long time = (Long) obj;
+                        row.addLong(i, time);
+                        break;
+                    }
+                    case BINARY: {
+                        byte[] b = (byte[]) obj;
+                        row.addBinary(i, b);
+                        break;
+                    }
+                    default:
+                        throw new IOException("Cannot write Object '"
+                                + obj.getClass().getSimpleName() + "' as type: " + kuduWritable.getType(i).name());
+                }
+            }
+            return insert;
+        }
         @Override
-        public void write(NullWritable key, Operation operation)
-                throws IOException, InterruptedException {
+        public void write(NullWritable key, KuduWritable kw)
+                throws IOException {
             try {
+                LOG.warn("I was called : write");
+                Operation operation = getOperation(kw);
+
+                LOG.warn("applying operation ");
                 session.apply(operation);
             } catch (Exception e) {
                 throw new IOException("Encountered an error while writing", e);
@@ -175,23 +255,24 @@ public class KuduTableOutputFormat implements OutputFormat, Configurable {
         }
 
         @Override
-        public void close(TaskAttemptContext taskAttemptContext) throws IOException,
-                InterruptedException {
+        public void close(Reporter reporter) throws IOException {
             try {
+                LOG.warn("I was called : close");
                 processRowErrors(session.close());
                 shutdownClient();
             } catch (Exception e) {
                 throw new IOException("Encountered an error while closing this task", e);
             } finally {
-                if (taskAttemptContext != null) {
+                if (reporter != null) {
                     // This is the only place where we have access to the context in the record writer,
                     // so set the counter here.
-                    taskAttemptContext.getCounter(Counters.ROWS_WITH_ERRORS).setValue(rowsWithErrors.get());
+                    reporter.getCounter(Counters.ROWS_WITH_ERRORS).setValue(rowsWithErrors.get());
                 }
             }
         }
 
         private void processRowErrors(List<OperationResponse> responses) {
+            LOG.warn("I was called : processRowErrors");
             List<RowError> errors = OperationResponse.collectErrors(responses);
             if (!errors.isEmpty()) {
                 int rowErrorsCount = errors.size();

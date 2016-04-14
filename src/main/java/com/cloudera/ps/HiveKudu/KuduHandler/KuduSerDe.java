@@ -12,6 +12,8 @@ import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
 import org.apache.hadoop.io.Writable;
 import org.kududb.Type;
+import org.kududb.client.Insert;
+import org.kududb.client.Operation;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -40,6 +42,7 @@ public class KuduSerDe implements SerDe {
     @Override
     public void initialize(Configuration sysConf, Properties tblProps)
         throws SerDeException {
+        LOG.warn("I was called : initialize");
 
         LOG.debug("tblProps: " + tblProps);
 
@@ -88,17 +91,20 @@ public class KuduSerDe implements SerDe {
 
     @Override
     public ObjectInspector getObjectInspector() throws SerDeException {
+        LOG.warn("I was called : getObjectInspector");
         return objectInspector;
     }
 
     @Override
     public Class<? extends Writable> getSerializedClass() {
+        LOG.warn("I was called : getSerializedClass");
         return KuduWritable.class;
     }
 
     @Override
     public KuduWritable serialize(Object row, ObjectInspector inspector)
         throws SerDeException {
+        LOG.warn("I was called : serialize");
 
         final StructObjectInspector structInspector = (StructObjectInspector) inspector;
         final List<? extends StructField> fields = structInspector.getAllStructFieldRefs();
@@ -127,6 +133,7 @@ public class KuduSerDe implements SerDe {
 
     @Override
     public Object deserialize(Writable record) throws SerDeException {
+        LOG.warn("I was called : deserialize");
         if (!(record instanceof KuduWritable)) {
             throw new SerDeException("Expected KuduWritable, received "
                     + record.getClass().getName());
@@ -142,6 +149,7 @@ public class KuduSerDe implements SerDe {
 
     @Override
     public SerDeStats getSerDeStats() {
+        LOG.warn("I was called : getSerDeStats");
         // TODO Auto-generated method stub
         return null;
     }
