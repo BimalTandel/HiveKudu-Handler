@@ -16,17 +16,18 @@ import org.apache.hadoop.hive.ql.plan.TableDesc;
 import org.apache.hadoop.hive.ql.security.authorization.DefaultHiveAuthorizationProvider;
 import org.apache.hadoop.hive.ql.security.authorization.HiveAuthorizationProvider;
 import org.apache.hadoop.hive.serde2.Deserializer;
+import org.apache.hadoop.hive.serde2.SerDe;
 import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapred.InputFormat;
+import org.apache.hadoop.mapred.OutputFormat;
 import org.apache.hadoop.util.StringUtils;
 import org.kududb.ColumnSchema;
 import org.kududb.Schema;
 import org.kududb.client.KuduClient;
 import org.kududb.client.CreateTableOptions;
+import org.kududb.mapred.KuduTableInputFormat;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Created by bimal on 4/11/16.
@@ -42,6 +43,7 @@ public class KuduStorageHandler extends DefaultStorageHandler
     private KuduClient client;
 
     private KuduClient getKuduClient() throws MetaException {
+        LOG.warn("I was called : getKuduClient");
         try {
             if (client == null) {
                 client = new KuduClient.KuduClientBuilder(kuduMaster).build();
@@ -57,39 +59,46 @@ public class KuduStorageHandler extends DefaultStorageHandler
 
     @Override
     public Configuration getConf() {
+        LOG.warn("I was called : getConf");
         return conf;
     }
 
     @Override
     public void setConf(Configuration conf) {
+        LOG.warn("I was called : setConf");
         this.conf = conf;
     }
 
     @Override
     public HiveMetaHook getMetaHook() {
+        LOG.warn("I was called : getMetaHook");
         return this;
     }
 
     @Override
     public void configureInputJobProperties(TableDesc tableDesc,
                                             Map<String, String> jobProperties) {
+        LOG.warn("I was called : configureInputJobProperties");
         configureJobProperties(tableDesc, jobProperties);
     }
 
     @Override
     public void configureOutputJobProperties(TableDesc tableDesc,
                                              Map<String, String> jobProperties) {
+        LOG.warn("I was called : configureOutputJobProperties");
         configureJobProperties(tableDesc, jobProperties);
     }
 
     @Override
     public void configureTableJobProperties(TableDesc tableDesc,
                                             Map<String, String> jobProperties) {
+        LOG.warn("I was called : configureTableJobProperties");
         configureJobProperties(tableDesc, jobProperties);
     }
 
     private void configureJobProperties(TableDesc tableDesc,
                                         Map<String, String> jobProperties) {
+        LOG.warn("I was called : configureJobProperties");
         if (LOG.isDebugEnabled()) {
             LOG.debug("tabelDesc: " + tableDesc);
             LOG.debug("jobProperties: " + jobProperties);
@@ -97,24 +106,45 @@ public class KuduStorageHandler extends DefaultStorageHandler
         /*
         TODO: Implement reading provided properties and load jobProperties
          */
-
+        String tblName = tableDesc.getTableName();
+        Properties tblProps = tableDesc.getProperties();
+        String columnNames = tblProps.getProperty(Constants.LIST_COLUMNS);
     }
 
     @Override
     public HiveAuthorizationProvider getAuthorizationProvider()
             throws HiveException {
+        LOG.warn("I was called : getAuthorizationProvider");
         return new DefaultHiveAuthorizationProvider();
+    }
+
+    @Override
+    public Class<? extends InputFormat> getInputFormatClass() {
+        return KuduTableInputFormat.class;
+    }
+
+    @Override
+    public Class<? extends OutputFormat> getOutputFormatClass() {
+        return HiveKuduTableOutputFormat.class;
+    }
+
+    @Override
+    public Class<? extends SerDe> getSerDeClass() {
+        return KuduSerDe.class;
     }
 
     @Override
     public DecomposedPredicate decomposePredicate(JobConf jobConf,
                                                   Deserializer deserializer, ExprNodeDesc predicate) {
+        LOG.warn("I was called : decomposePredicate");
         // No Idea how to implement Predicate push down. Need to read more about this and understand how it will work in Kudu.
         DecomposedPredicate decomposedPredicate = new DecomposedPredicate();
         return decomposedPredicate;
     }
 
     private String getKuduTableName(Table tbl) {
+
+        LOG.warn("I was called : getKuduTableName");
 
         String tableName = tbl.getParameters().get("kudu.table_name");
         if (tableName == null) {
@@ -124,6 +154,9 @@ public class KuduStorageHandler extends DefaultStorageHandler
     }
 
     private void printSchema(Schema schema) {
+
+        LOG.warn("I was called : printSchema");
+
         if (schema == null) {
               return;
             }
@@ -140,6 +173,8 @@ public class KuduStorageHandler extends DefaultStorageHandler
 
     @Override
     public void preCreateTable(Table tbl) throws MetaException {
+
+        LOG.warn("I was called : preCreateTable");
 
         boolean isExternal = MetaStoreUtils.isExternalTable(tbl);
 
@@ -199,27 +234,32 @@ public class KuduStorageHandler extends DefaultStorageHandler
 
     @Override
     public void commitCreateTable(Table tbl) throws MetaException {
+        LOG.warn("I was called : commitCreateTable");
         // TODO Auto-generated method stub
     }
 
     @Override
     public void preDropTable(Table tbl) throws MetaException {
+        LOG.warn("I was called : preDropTable");
         // nothing to do
     }
 
     @Override
     public void commitDropTable(Table tbl, boolean deleteData)
             throws MetaException {
+        LOG.warn("I was called : commitDropTable");
         // TODO Auto-generated method stub
     }
 
     @Override
     public void rollbackCreateTable(Table tbl) throws MetaException {
+        LOG.warn("I was called : rollbackCreateTable");
         // TODO Auto-generated method stub
     }
 
     @Override
     public void rollbackDropTable(Table tbl) throws MetaException {
+        LOG.warn("I was called : rollbackDropTable");
         // TODO Auto-generated method stub
     }
 
