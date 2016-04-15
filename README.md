@@ -3,6 +3,10 @@ Hive Kudu Storage Handler, Input & Output format, Writable and SerDe
 
 This is the first release of Hive on Kudu.
 
+The Resource folders has the Jars you need to test this.
+
+If you would like to build then make install and use "HiveKudu-Handler-0.0.1.jar" to add in hive cli or hiveserver2 lib path.
+
 ## Working Test case
 ### simple_test.sql
 ```sql
