@@ -1,6 +1,7 @@
 # Hive On Kudu Design Document
 ## Design Goals
 The primary goal of developing Hive on Kudu is to fully leverage Hive and Kudu's capabilities. The goal is to release the first version of Hive on Kudu with the following features. 
+
 1. Support for Hive External tables to Kudu
     * SerDe to auto-create columns in Hive
 2. Support for Hive managed tables on Kudu
@@ -37,5 +38,11 @@ Things that need further discussion
     * Option 1: Use Hives "Clustered By" and "INTO numbuckets BUCKETS" clauses.
     * Option 2: Use TBLPROPERTIES Key Value Pairs
 * How should we decompose predicates to allow Kudu to filter records during table scans? We can attempt to do what is currently supported via Impala. 
-* 
 
+### HiveKudu Serde and HiveKudu Writable
+* Review the current design of the Writable object
+* Hive to Kudu datatype mappings. (Kudu treats timestamps as LONG).
+
+### HiveKudu Input & Output format
+* Can we leverage the ACIDInputOutput format for Kudu?
+* How to leverage hive transactions for Kudu?
