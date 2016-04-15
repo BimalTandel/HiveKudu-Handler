@@ -3,10 +3,8 @@ package org.kududb.mapred;
 /**
  * Created by bimal on 4/13/16.
  */
-import com.cloudera.ps.HiveKudu.KuduHandler.KuduWritable;
+import org.apache.hadoop.hive.kududb.KuduHandler.HiveKuduWritable;
 import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.hive.metastore.api.OpenTxnRequest;
-import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordWriter;
 import org.apache.hadoop.mapred.Reporter;
@@ -23,7 +21,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -32,9 +29,9 @@ import java.util.concurrent.atomic.AtomicLong;
 
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class KuduTableOutputFormat implements OutputFormat, Configurable {
+public class HiveKuduTableOutputFormat implements OutputFormat, Configurable {
 
-    private static final Logger LOG = LoggerFactory.getLogger(KuduTableOutputFormat.class);
+    private static final Logger LOG = LoggerFactory.getLogger(HiveKuduTableOutputFormat.class);
 
     /** Job parameter that specifies the output table. */
     static final String OUTPUT_TABLE_KEY = "kudu.mapreduce.output.table";
@@ -49,7 +46,7 @@ public class KuduTableOutputFormat implements OutputFormat, Configurable {
     static final String BUFFER_ROW_COUNT_KEY = "kudu.mapreduce.buffer.row.count";
 
     /**
-     * Job parameter that specifies which key is to be used to reach the KuduTableOutputFormat
+     * Job parameter that specifies which key is to be used to reach the HiveKuduTableOutputFormat
      * belonging to the caller
      */
     static final String MULTITON_KEY = "kudu.mapreduce.multitonkey";
@@ -59,8 +56,8 @@ public class KuduTableOutputFormat implements OutputFormat, Configurable {
      * their KuduTable without having a direct dependency on this class,
      * with the additional complexity that the output format cannot be shared between threads.
      */
-    private static final ConcurrentHashMap<String, KuduTableOutputFormat> MULTITON = new
-            ConcurrentHashMap<String, KuduTableOutputFormat>();
+    private static final ConcurrentHashMap<String, HiveKuduTableOutputFormat> MULTITON = new
+            ConcurrentHashMap<String, HiveKuduTableOutputFormat>();
 
     /**
      * This counter helps indicate which task log to look at since rows that weren't applied will
@@ -156,7 +153,7 @@ public class KuduTableOutputFormat implements OutputFormat, Configurable {
     }
     */
 
-    protected class TableRecordWriter implements RecordWriter<NullWritable, KuduWritable> {
+    protected class TableRecordWriter implements RecordWriter<NullWritable, HiveKuduWritable> {
 
         private final AtomicLong rowsWithErrors = new AtomicLong();
         private final KuduSession session;
@@ -166,10 +163,10 @@ public class KuduTableOutputFormat implements OutputFormat, Configurable {
             this.session = session;
         }
 
-        private Operation getOperation(KuduWritable kuduWritable)
+        private Operation getOperation(HiveKuduWritable hiveKuduWritable)
             throws IOException{
             LOG.warn("I was called : getOperation");
-            int recCount = kuduWritable.getColCount();
+            int recCount = hiveKuduWritable.getColCount();
             Schema schema = table.getSchema();
             int colCount = schema.getColumnCount();
             if (recCount != colCount) {
@@ -183,10 +180,10 @@ public class KuduTableOutputFormat implements OutputFormat, Configurable {
             PartialRow row = insert.getRow();
 
             for (int i = 0; i < recCount; i++) {
-                Object obj = kuduWritable.get(i);
-                LOG.warn("From Writable Column value of " + i + " is " + obj.toString() + " and type is " + kuduWritable.getType(i).name());
+                Object obj = hiveKuduWritable.get(i);
+                LOG.warn("From Writable Column value of " + i + " is " + obj.toString() + " and type is " + hiveKuduWritable.getType(i).name());
                 LOG.warn("From Schema Column name of " + i + " is " + schema.getColumnByIndex(i).getName());
-                switch(kuduWritable.getType(i)) {
+                switch(hiveKuduWritable.getType(i)) {
                     case STRING: {
                         LOG.warn("I was called : STRING");
                         String s = obj.toString();
@@ -249,14 +246,14 @@ public class KuduTableOutputFormat implements OutputFormat, Configurable {
                     }
                     default:
                         throw new IOException("Cannot write Object '"
-                                + obj.getClass().getSimpleName() + "' as type: " + kuduWritable.getType(i).name());
+                                + obj.getClass().getSimpleName() + "' as type: " + hiveKuduWritable.getType(i).name());
                 }
             }
 
             return insert;
         }
         @Override
-        public void write(NullWritable key, KuduWritable kw)
+        public void write(NullWritable key, HiveKuduWritable kw)
                 throws IOException {
             try {
                 LOG.warn("I was called : write");

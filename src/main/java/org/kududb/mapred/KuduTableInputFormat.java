@@ -15,7 +15,7 @@ package org.kududb.mapred;
  * limitations under the License. See accompanying LICENSE file.
  */
 
-import com.cloudera.ps.HiveKudu.KuduHandler.KuduWritable;
+import org.apache.hadoop.hive.kududb.KuduHandler.HiveKuduWritable;
 import com.google.common.base.Objects;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Lists;
@@ -221,8 +221,8 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
     }
 
     @Override
-    public RecordReader<NullWritable, KuduWritable> getRecordReader(InputSplit inputSplit,
-                                                                    final JobConf jobConf, final Reporter reporter)
+    public RecordReader<NullWritable, HiveKuduWritable> getRecordReader(InputSplit inputSplit,
+                                                                        final JobConf jobConf, final Reporter reporter)
             throws IOException {
         return new TableRecordReader();
     }
@@ -376,7 +376,7 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
         }
     }
 
-    class TableRecordReader implements RecordReader<NullWritable, KuduWritable> {
+    class TableRecordReader implements RecordReader<NullWritable, HiveKuduWritable> {
 
         private final NullWritable currentKey = NullWritable.get();
         private RowResult currentValue;
@@ -455,10 +455,10 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
         }
 
         @Override
-        public boolean next(NullWritable nullWritable, KuduWritable kuduWritable) throws IOException {
+        public boolean next(NullWritable nullWritable, HiveKuduWritable hiveKuduWritable) throws IOException {
             if (first) {
-                kuduWritable.set(0, 1);
-                kuduWritable.set(1, 'a');
+                hiveKuduWritable.set(0, 1);
+                hiveKuduWritable.set(1, 'a');
                 first = false;
                 return true;
             }
@@ -471,8 +471,8 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
         }
 
         @Override
-        public KuduWritable createValue() {
-            return new KuduWritable(types);
+        public HiveKuduWritable createValue() {
+            return new HiveKuduWritable(types);
         }
 
         @Override

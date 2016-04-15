@@ -3,7 +3,7 @@ package org.kududb.mapred;
 /**
  * Created by bimal on 4/13/16.
  */
-import com.cloudera.ps.HiveKudu.KuduHandler.KuduWritable;
+import org.apache.hadoop.hive.kududb.KuduHandler.HiveKuduWritable;
 import com.google.common.base.Objects;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Lists;
@@ -261,8 +261,8 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
     }
 
     @Override
-    public RecordReader<NullWritable, KuduWritable> getRecordReader(InputSplit inputSplit,
-                                                                    final JobConf jobConf, final Reporter reporter)
+    public RecordReader<NullWritable, HiveKuduWritable> getRecordReader(InputSplit inputSplit,
+                                                                        final JobConf jobConf, final Reporter reporter)
             throws IOException {
         InputSplit delegate = ((KuduHiveSplit) inputSplit).delegate;
         LOG.warn("I was called : getRecordReader");
@@ -440,7 +440,7 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
         }
     }
 
-    class TableRecordReader implements RecordReader<NullWritable, KuduWritable> {
+    class TableRecordReader implements RecordReader<NullWritable, HiveKuduWritable> {
 
         private final NullWritable currentKey = NullWritable.get();
         private RowResult currentValue;
@@ -487,7 +487,7 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
         }
 
         @Override
-        public boolean next(NullWritable o, KuduWritable o2) throws IOException {
+        public boolean next(NullWritable o, HiveKuduWritable o2) throws IOException {
             LOG.warn("I was called : next");
             /*
             if (first) {
@@ -577,9 +577,9 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
         }
 
         @Override
-        public KuduWritable createValue() {
+        public HiveKuduWritable createValue() {
             LOG.warn("I was called : createValue");
-            return new KuduWritable(types);
+            return new HiveKuduWritable(types);
         }
 
         @Override

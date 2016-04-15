@@ -1,4 +1,4 @@
-package com.cloudera.ps.HiveKudu.KuduHandler;
+package org.apache.hadoop.hive.kududb.KuduHandler;
 
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableUtils;
@@ -12,17 +12,17 @@ import java.util.Arrays;
 /**
  * Created by bimal on 4/12/16.
  */
-public class KuduWritable implements Writable {
+public class HiveKuduWritable implements Writable {
 
 
     private Object[] columnValues;
     private Type[] columnTypes;
 
-    public KuduWritable() {
+    public HiveKuduWritable() {
 
     }
 
-    public KuduWritable (Type[] types) {
+    public HiveKuduWritable(Type[] types) {
         this.columnValues = new Object[types.length];
         this.columnTypes = types;
     }

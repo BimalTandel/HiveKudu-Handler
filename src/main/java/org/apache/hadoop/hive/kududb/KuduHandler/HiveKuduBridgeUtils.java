@@ -1,4 +1,4 @@
-package com.cloudera.ps.HiveKudu.KuduHandler;
+package org.apache.hadoop.hive.kududb.KuduHandler;
 
 import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;

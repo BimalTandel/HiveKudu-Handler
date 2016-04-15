@@ -1,4 +1,4 @@
-package com.cloudera.ps.HiveKudu.KuduHandler;
+package org.apache.hadoop.hive.kududb.KuduHandler;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -12,8 +12,6 @@ import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
 import org.apache.hadoop.io.Writable;
 import org.kududb.Type;
-import org.kududb.client.Insert;
-import org.kududb.client.Operation;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -25,18 +23,18 @@ import java.util.Properties;
  * Created by bimal on 4/12/16.
  */
 
-public class KuduSerDe implements SerDe {
+public class HiveKuduSerDe implements SerDe {
 
-    private static final Log LOG = LogFactory.getLog(KuduSerDe.class);
+    private static final Log LOG = LogFactory.getLog(HiveKuduSerDe.class);
 
-    private KuduWritable cachedWritable; //Currently Update/Delete not supported from Hive.
+    private HiveKuduWritable cachedWritable; //Currently Update/Delete not supported from Hive.
 
     private int fieldCount;
 
     private StructObjectInspector objectInspector;
     private List<Object> deserializeCache;
 
-    public KuduSerDe() {
+    public HiveKuduSerDe() {
     }
 
     @Override
@@ -47,9 +45,9 @@ public class KuduSerDe implements SerDe {
         LOG.debug("tblProps: " + tblProps);
 
         String columnNameProperty = tblProps
-                .getProperty(Constants.LIST_COLUMNS);
+                .getProperty(HiveKuduConstants.LIST_COLUMNS);
         String columnTypeProperty = tblProps
-                .getProperty(Constants.LIST_COLUMN_TYPES);
+                .getProperty(HiveKuduConstants.LIST_COLUMN_TYPES);
 
         if (columnNameProperty.length() == 0
                 && columnTypeProperty.length() == 0) {
@@ -72,7 +70,7 @@ public class KuduSerDe implements SerDe {
             types[i] = HiveKuduBridgeUtils.hiveTypeToKuduType(columnTypes[i]);
         }
 
-        this.cachedWritable = new KuduWritable(types);
+        this.cachedWritable = new HiveKuduWritable(types);
 
         this.fieldCount = types.length;
 
@@ -98,11 +96,11 @@ public class KuduSerDe implements SerDe {
     @Override
     public Class<? extends Writable> getSerializedClass() {
         LOG.warn("I was called : getSerializedClass");
-        return KuduWritable.class;
+        return HiveKuduWritable.class;
     }
 
     @Override
-    public KuduWritable serialize(Object row, ObjectInspector inspector)
+    public HiveKuduWritable serialize(Object row, ObjectInspector inspector)
         throws SerDeException {
         LOG.warn("I was called : serialize");
 
@@ -135,11 +133,11 @@ public class KuduSerDe implements SerDe {
     @Override
     public Object deserialize(Writable record) throws SerDeException {
         LOG.warn("I was called : deserialize");
-        if (!(record instanceof KuduWritable)) {
-            throw new SerDeException("Expected KuduWritable, received "
+        if (!(record instanceof HiveKuduWritable)) {
+            throw new SerDeException("Expected HiveKuduWritable, received "
                     + record.getClass().getName());
         }
-        KuduWritable tuple = (KuduWritable) record;
+        HiveKuduWritable tuple = (HiveKuduWritable) record;
         deserializeCache.clear();
         for (int i = 0; i < fieldCount; i++) {
             Object o = tuple.get(i);

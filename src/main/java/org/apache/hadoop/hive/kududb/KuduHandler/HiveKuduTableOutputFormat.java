@@ -1,4 +1,4 @@
-package com.cloudera.ps.HiveKudu.KuduHandler;
+package org.apache.hadoop.hive.kududb.KuduHandler;
 
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.hive.shims.ShimLoader;
