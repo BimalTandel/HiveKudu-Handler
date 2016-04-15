@@ -65,7 +65,7 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
     static final String SCAN_CACHE_BLOCKS = "kudu.mapreduce.input.scan.cache.blocks";
 
     /** Job parameter that specifies where the masters are. */
-    static final String MASTER_ADDRESSES_KEY = "kudu.mapreduce.master.address";
+    static final String MASTER_ADDRESSES_KEY = "kudu.mapreduce.master.addresses";
 
     /** Job parameter that specifies how long we wait for operations to complete (default: 10s). */
     static final String OPERATION_TIMEOUT_MS_KEY = "kudu.mapreduce.operation.timeout.ms";
@@ -217,7 +217,8 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
                 return wrappers;
             }
         } finally {
-            shutdownClient();
+            //shutdownClient();
+            LOG.warn("This is a Bug. No need to shutdown client.");
         }
     }
 
@@ -226,7 +227,7 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
         try {
             client.shutdown();
         } catch (Exception e) {
-            throw new IOException(e);
+            LOG.error("Error shutting down Kudu Client" + e);
         }
     }
 
@@ -457,7 +458,7 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
             }
 
             //Create another client
-            setConf(getConf());
+            //setConf(getConf());
 
             split = (TableSplit) inputSplit;
             scanner = client.newScannerBuilder(table)

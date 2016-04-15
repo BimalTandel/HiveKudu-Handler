@@ -34,7 +34,7 @@ public final class HiveKuduConstants {
     //MapReduce Properties
     public static final String MR_INPUT_TABLE_NAME = "kudu.mapreduce.input.table";
     public static final String MR_OUTPUT_TABLE_NAME = "kudu.mapreduce.output.table";
-    public static final String MR_MASTER_ADDRESS_NAME = "kudu.mapreduce.master.address";
+    public static final String MR_MASTER_ADDRESS_NAME = "kudu.mapreduce.master.addresses";
     public static final String MR_PROPERTY_PREFIX = "kudu.mapreduce.";
     //DEFAULT VALUES & Getters for Default values
 

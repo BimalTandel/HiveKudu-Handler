@@ -1,3 +1,19 @@
+/**
+ * Copyright 2016 Bimal Tandel
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+ http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ */
+
 package org.apache.hadoop.hive.kududb.KuduHandler;
 
 import org.apache.commons.logging.Log;
@@ -40,7 +56,6 @@ public class HiveKuduSerDe implements SerDe {
     @Override
     public void initialize(Configuration sysConf, Properties tblProps)
         throws SerDeException {
-        LOG.warn("I was called : initialize");
 
         LOG.debug("tblProps: " + tblProps);
 
@@ -89,20 +104,17 @@ public class HiveKuduSerDe implements SerDe {
 
     @Override
     public ObjectInspector getObjectInspector() throws SerDeException {
-        LOG.warn("I was called : getObjectInspector");
         return objectInspector;
     }
 
     @Override
     public Class<? extends Writable> getSerializedClass() {
-        LOG.warn("I was called : getSerializedClass");
         return HiveKuduWritable.class;
     }
 
     @Override
     public HiveKuduWritable serialize(Object row, ObjectInspector inspector)
         throws SerDeException {
-        LOG.warn("I was called : serialize");
 
         final StructObjectInspector structInspector = (StructObjectInspector) inspector;
         final List<? extends StructField> fields = structInspector.getAllStructFieldRefs();
@@ -132,7 +144,6 @@ public class HiveKuduSerDe implements SerDe {
 
     @Override
     public Object deserialize(Writable record) throws SerDeException {
-        LOG.warn("I was called : deserialize");
         if (!(record instanceof HiveKuduWritable)) {
             throw new SerDeException("Expected HiveKuduWritable, received "
                     + record.getClass().getName());
@@ -148,8 +159,7 @@ public class HiveKuduSerDe implements SerDe {
 
     @Override
     public SerDeStats getSerDeStats() {
-        LOG.warn("I was called : getSerDeStats");
-        // TODO Auto-generated method stub
+        // TODO How to implement this?
         return null;
     }
 }

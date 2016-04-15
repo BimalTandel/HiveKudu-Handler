@@ -36,7 +36,6 @@ import org.apache.hadoop.hive.serde2.SerDe;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.InputFormat;
 import org.apache.hadoop.mapred.OutputFormat;
-import org.apache.hadoop.util.StringUtils;
 import org.kududb.ColumnSchema;
 import org.kududb.Schema;
 import org.kududb.client.KuduClient;
@@ -77,10 +76,10 @@ public class KuduStorageHandler extends DefaultStorageHandler
         return HiveKuduSerDe.class;
     }
 
-    private KuduClient getKuduClient() throws MetaException {
+    private KuduClient getKuduClient(String master) throws MetaException {
         try {
 
-            return new KuduClient.KuduClientBuilder(kuduMaster).build();
+            return new KuduClient.KuduClientBuilder(master).build();
         } catch (Exception ioe){
             throw new MetaException("Error creating Kudu Client: " + ioe);
         }
@@ -224,7 +223,7 @@ public class KuduStorageHandler extends DefaultStorageHandler
     @Override
     public void preCreateTable(Table tbl)
             throws MetaException {
-        KuduClient client = getKuduClient();
+        KuduClient client = getKuduClient(tbl.getParameters().get(HiveKuduConstants.MASTER_ADDRESS_NAME));
 
         boolean isExternal = MetaStoreUtils.isExternalTable(tbl);
 
@@ -292,7 +291,7 @@ public class KuduStorageHandler extends DefaultStorageHandler
     @Override
     public void commitDropTable(Table tbl, boolean deleteData)
             throws MetaException {
-        KuduClient client = getKuduClient();
+        KuduClient client = getKuduClient(tbl.getParameters().get(HiveKuduConstants.MASTER_ADDRESS_NAME));
         String tablename = getKuduTableName(tbl);
         boolean isExternal = MetaStoreUtils.isExternalTable(tbl);
         try {
@@ -312,7 +311,7 @@ public class KuduStorageHandler extends DefaultStorageHandler
 
     @Override
     public void rollbackCreateTable(Table tbl) throws MetaException {
-        KuduClient client = getKuduClient();
+        KuduClient client = getKuduClient(tbl.getParameters().get(HiveKuduConstants.MASTER_ADDRESS_NAME));
         String tablename = getKuduTableName(tbl);
         boolean isExternal = MetaStoreUtils.isExternalTable(tbl);
         try {
