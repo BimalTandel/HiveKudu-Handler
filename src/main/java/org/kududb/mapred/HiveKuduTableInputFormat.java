@@ -1,28 +1,19 @@
 package org.kududb.mapred;
 
 /**
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *   http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License. See accompanying LICENSE file.
+ * Created by bimal on 4/13/16.
  */
-
 import com.cloudera.ps.HiveKudu.KuduHandler.KuduWritable;
 import com.google.common.base.Objects;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Lists;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.Text;
+import org.kududb.Type;
 import org.apache.commons.net.util.Base64;
 import org.apache.hadoop.mapred.*;
+import org.apache.hadoop.util.StringUtils;
 import org.kududb.Schema;
-import org.kududb.Type;
 import org.kududb.annotations.InterfaceAudience;
 import org.kududb.annotations.InterfaceStability;
 import org.kududb.client.*;
@@ -55,15 +46,15 @@ import java.util.Map;
  * <p>
  * Hadoop doesn't have the concept of "closing" the input format so in order to release the
  * resources we assume that once either {@link #getSplits(org.apache.hadoop.mapred.JobConf, int)}
- * or {@link KuduTableInputFormat.TableRecordReader#close()} have been called that
+ * or {@link HiveKuduTableInputFormat.TableRecordReader#close()} have been called that
  * the object won't be used again and the AsyncKuduClient is shut down.
  * </p>
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class KuduTableInputFormat implements InputFormat, Configurable {
+public class HiveKuduTableInputFormat implements InputFormat, Configurable {
 
-    private static final Log LOG = LogFactory.getLog(KuduTableInputFormat.class);
+    private static final Log LOG = LogFactory.getLog(HiveKuduTableInputFormat.class);
 
     private static final long SLEEP_TIME_FOR_RETRIES_MS = 1000;
 
@@ -111,14 +102,58 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
     private List<String> projectedCols;
     private byte[] rawPredicates;
 
+    static class KuduHiveSplit extends FileSplit {
+        InputSplit delegate;
+        private Path path;
+
+        KuduHiveSplit() {
+            this(new TableSplit(), null);
+        }
+
+        KuduHiveSplit(InputSplit delegate, Path path) {
+            super(path, 0, 0, (String[]) null);
+            this.delegate = delegate;
+            this.path = path;
+        }
+
+        public long getLength() {
+            // TODO: can this be delegated?
+            return 1L;
+        }
+
+        public String[] getLocations() throws IOException {
+            return delegate.getLocations();
+        }
+
+        public void write(DataOutput out) throws IOException {
+            Text.writeString(out, path.toString());
+            delegate.write(out);
+        }
+
+        public void readFields(DataInput in) throws IOException {
+            path = new Path(Text.readString(in));
+            delegate.readFields(in);
+        }
+
+        @Override
+        public String toString() {
+            return delegate.toString();
+        }
+
+        @Override
+        public Path getPath() {
+            return path;
+        }
+    }
     @Override
-    public InputSplit[] getSplits(JobConf jobConf, int i)
+    public FileSplit[] getSplits(JobConf jobConf, int i)
             throws IOException {
+        LOG.warn("I was called : getSplits");
         try {
             if (table == null) {
                 throw new IOException("No table was provided");
             }
-            List<InputSplit> splits;
+            InputSplit[] splits;
             DeadlineTracker deadline = new DeadlineTracker();
             deadline.setDeadline(operationTimeoutMs);
             // If the job is started while a leader election is running, we might not be able to find a
@@ -142,7 +177,8 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
                 // For the moment we only pass the leader since that's who we read from.
                 // If we've been trying to get a leader for each tablet for too long, we stop looping
                 // and just finish with what we have.
-                splits = new ArrayList<InputSplit>(locations.size());
+                splits = new InputSplit[locations.size()];
+                int count = 0;
                 for (LocatedTablet locatedTablet : locations) {
                     List<String> addresses = Lists.newArrayList();
                     LocatedTablet.Replica replica = locatedTablet.getLeaderReplica();
@@ -158,8 +194,9 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
                             try {
                                 Thread.sleep(SLEEP_TIME_FOR_RETRIES_MS);
                             } catch (InterruptedException ioe) {
-                                throw new IOException("Timeout Exception while creating splits " + ioe);
+                                throw new IOException(StringUtils.stringifyException(ioe));
                             }
+
                             continue retryloop;
                         }
                     }
@@ -169,14 +206,15 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
                     TableSplit split = new TableSplit(partition.getPartitionKeyStart(),
                             partition.getPartitionKeyEnd(),
                             addressesArray);
-                    splits.add(split);
+                    splits[count] = split;
+                    count++;
                 }
-                InputSplit[] rsplits = new InputSplit[splits.size()];
-
-                for (int index = 0; index < rsplits.length; index++) {
-                    rsplits[index] = splits.get(index);
+                FileSplit[] wrappers = new FileSplit[splits.length];
+                Path path = new Path(jobConf.get("location"));
+                for (int counter = 0; counter < wrappers.length; counter++) {
+                    wrappers[counter] = new KuduHiveSplit(splits[counter], path);
                 }
-                return rsplits;
+                return wrappers;
             }
         } finally {
             shutdownClient();
@@ -184,6 +222,7 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
     }
 
     private void shutdownClient() throws IOException {
+        LOG.warn("I was called : shutdownClient");
         try {
             client.shutdown();
         } catch (Exception e) {
@@ -199,6 +238,7 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
      * @return reverse DNS'd address
      */
     private String reverseDNS(String host, Integer port) {
+        LOG.warn("I was called : reverseDNS");
         String location = this.reverseDNSCacheMap.get(host);
         if (location != null) {
             return location;
@@ -224,11 +264,19 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
     public RecordReader<NullWritable, KuduWritable> getRecordReader(InputSplit inputSplit,
                                                                     final JobConf jobConf, final Reporter reporter)
             throws IOException {
-        return new TableRecordReader();
+        InputSplit delegate = ((KuduHiveSplit) inputSplit).delegate;
+        LOG.warn("I was called : getRecordReader");
+        try {
+            return new TableRecordReader(delegate);
+        } catch (InterruptedException e)
+        {
+            throw new IOException(e);
+        }
     }
 
     @Override
     public void setConf(Configuration entries) {
+        LOG.warn("I was called : setConf");
         this.conf = new Configuration(entries);
 
         String tableName = conf.get(INPUT_TABLE_KEY);
@@ -237,6 +285,8 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
                 AsyncKuduClient.DEFAULT_OPERATION_TIMEOUT_MS);
         this.nameServer = conf.get(NAME_SERVER_KEY);
         this.cacheBlocks = conf.getBoolean(SCAN_CACHE_BLOCKS, false);
+
+        LOG.warn(" the master address here is " + masterAddresses);
 
         this.client = new KuduClient.KuduClientBuilder(masterAddresses)
                 .defaultOperationTimeoutMs(operationTimeoutMs)
@@ -249,7 +299,8 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
                     "master address= " + masterAddresses, ex);
         }
 
-        String projectionConfig = conf.get(COLUMN_PROJECTION_KEY);
+        //String projectionConfig = conf.get(COLUMN_PROJECTION_KEY);
+        String projectionConfig = "id,name";
         if (projectionConfig == null || projectionConfig.equals("*")) {
             this.projectedCols = null; // project the whole table
         } else if ("".equals(projectionConfig)) {
@@ -280,9 +331,12 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
      *
      */
     private static String domainNamePointerToHostName(String dnPtr) {
+        LOG.warn("I was called : domainNamePointerToHostName");
         if (dnPtr == null)
             return null;
-        return dnPtr.endsWith(".") ? dnPtr.substring(0, dnPtr.length() - 1) : dnPtr;
+        String r = dnPtr.endsWith(".") ? dnPtr.substring(0, dnPtr.length() - 1) : dnPtr;
+        LOG.warn(r);
+        return r;
     }
 
     @Override
@@ -299,6 +353,7 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
         public TableSplit() { } // Writable
 
         public TableSplit(byte[] startPartitionKey, byte[] endPartitionKey, String[] locations) {
+            LOG.warn("I was called : TableSplit");
             this.startPartitionKey = startPartitionKey;
             this.endPartitionKey = endPartitionKey;
             this.locations = locations;
@@ -312,6 +367,7 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
 
         @Override
         public String[] getLocations() throws IOException {
+            LOG.warn("I was called : getLocations");
             return locations;
         }
 
@@ -325,11 +381,13 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
 
         @Override
         public int compareTo(TableSplit tableSplit) {
+            LOG.warn("I was called : compareTo");
             return Bytes.memcmp(startPartitionKey, tableSplit.getStartPartitionKey());
         }
 
         @Override
         public void write(DataOutput dataOutput) throws IOException {
+            LOG.warn("I was called : write");
             Bytes.writeByteArray(dataOutput, startPartitionKey);
             Bytes.writeByteArray(dataOutput, endPartitionKey);
             dataOutput.writeInt(locations.length);
@@ -341,23 +399,28 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
 
         @Override
         public void readFields(DataInput dataInput) throws IOException {
+            LOG.warn("I was called : readFields");
             startPartitionKey = Bytes.readByteArray(dataInput);
             endPartitionKey = Bytes.readByteArray(dataInput);
             locations = new String[dataInput.readInt()];
+            LOG.warn("readFields " + locations.length);
             for (int i = 0; i < locations.length; i++) {
                 byte[] str = Bytes.readByteArray(dataInput);
                 locations[i] = Bytes.getString(str);
+                LOG.warn("readFields " + locations[i]);
             }
         }
 
         @Override
         public int hashCode() {
+            LOG.warn("I was called : hashCode");
             // We currently just care about the row key since we're within the same table
             return Arrays.hashCode(startPartitionKey);
         }
 
         @Override
         public boolean equals(Object o) {
+            LOG.warn("I was called : equals");
             if (this == o) return true;
             if (o == null || getClass() != o.getClass()) return false;
 
@@ -368,6 +431,7 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
 
         @Override
         public String toString() {
+            LOG.warn("I was called : toString");
             return Objects.toStringHelper(this)
                     .add("startPartitionKey", Bytes.pretty(startPartitionKey))
                     .add("endPartitionKey", Bytes.pretty(endPartitionKey))
@@ -383,15 +447,17 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
         private RowResultIterator iterator;
         private KuduScanner scanner;
         private TableSplit split;
-        private Type[] types = new Type[2];
+        private Type[] types;
         private boolean first = true;
 
-        /*
-        @Override
-        public void initialize(InputSplit inputSplit, TaskAttemptContext taskAttemptContext) throws IOException, InterruptedException {
+        public TableRecordReader(InputSplit inputSplit) throws IOException, InterruptedException {
+            LOG.warn("I was called : TableRecordReader");
             if (!(inputSplit instanceof TableSplit)) {
                 throw new IllegalArgumentException("TableSplit is the only accepted input split");
             }
+
+            //Create another client
+            setConf(getConf());
 
             split = (TableSplit) inputSplit;
             scanner = client.newScannerBuilder(table)
@@ -402,12 +468,128 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
                     .addColumnRangePredicatesRaw(rawPredicates)
                     .build();
 
+            LOG.warn("table name: " +table.getName());
+            LOG.warn("projectedCols name: " + projectedCols.size());
+            LOG.warn("getStartPartitionKey: " + split.getStartPartitionKey().toString());
+            LOG.warn("getEndPartitionKey " + split.getEndPartitionKey().toString());
+            LOG.warn("cacheBlocks " + cacheBlocks);
+            LOG.warn("rawPredicates " + rawPredicates.length);
+
+
+            Schema schema = table.getSchema();
+            types = new Type[schema.getColumnCount()];
+            for (int i = 0; i < types.length; i++) {
+                types[i] = schema.getColumnByIndex(i).getType();
+                LOG.warn("Setting types array "+ i + " to " + types[i].name());
+            }
             // Calling this now to set iterator.
             tryRefreshIterator();
         }
-        */
 
-        /*
+        @Override
+        public boolean next(NullWritable o, KuduWritable o2) throws IOException {
+            LOG.warn("I was called : next");
+            /*
+            if (first) {
+                //tryRefreshIterator();
+                List<String> projectColumns = new ArrayList<>(2);
+                projectColumns.add("id");
+                projectColumns.add("name");
+                KuduScanner scanner = client.newScannerBuilder(table)
+                        .setProjectedColumnNames(projectColumns)
+                        .build();
+                try {
+                    iterator = scanner.nextRows();
+                } catch (Exception e) {
+                    throw new IOException("Couldn't get scan data", e);
+                }
+                first = false;
+            } else {
+                return false;
+            }
+            */
+            if (!iterator.hasNext()) {
+                tryRefreshIterator();
+                if (!iterator.hasNext()) {
+                    // Means we still have the same iterator, we're done
+                    return false;
+                }
+            }
+
+            currentValue = iterator.next();
+            o = currentKey;
+            o2.clear();
+            for (int i = 0; i < types.length; i++) {
+                switch(types[i]) {
+                    case STRING: {
+                        o2.set(i, currentValue.getString(i));
+                        break;
+                    }
+                    case FLOAT: {
+                        o2.set(i, currentValue.getFloat(i));
+                        break;
+                    }
+                    case DOUBLE: {
+                        o2.set(i, currentValue.getDouble(i));
+                        break;
+                    }
+                    case BOOL: {
+                        o2.set(i, currentValue.getBoolean(i));
+                        break;
+                    }
+                    case INT8: {
+                        o2.set(i, currentValue.getByte(i));
+                        break;
+                    }
+                    case INT16: {
+                        o2.set(i, currentValue.getShort(i));
+                        break;
+                    }
+                    case INT32: {
+                        o2.set(i, currentValue.getInt(i));
+                        break;
+                    }
+                    case INT64: {
+                        o2.set(i, currentValue.getLong(i));
+                        break;
+                    }
+                    case TIMESTAMP: {
+                        o2.set(i, currentValue.getLong(i));
+                        break;
+                    }
+                    case BINARY: {
+                        o2.set(i, currentValue.getBinaryCopy(i));
+                        break;
+                    }
+                    default:
+                        throw new IOException("Cannot write Object '"
+                                + currentValue.getColumnType(i).name() + "' as type: " + types[i].name());
+                }
+                LOG.warn("Value returned " + o2.get(i));
+            }
+            return true;
+        }
+
+        @Override
+        public NullWritable createKey() {
+            LOG.warn("I was called : createKey");
+            return NullWritable.get();
+        }
+
+        @Override
+        public KuduWritable createValue() {
+            LOG.warn("I was called : createValue");
+            return new KuduWritable(types);
+        }
+
+        @Override
+        public long getPos() throws IOException {
+            LOG.warn("I was called : getPos");
+            return 0;
+            //TODO: Get progress
+        }
+/*
+        //mapreduce code for reference.
         @Override
         public boolean nextKeyValue() throws IOException, InterruptedException {
             if (!iterator.hasNext()) {
@@ -420,12 +602,13 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
             currentValue = iterator.next();
             return true;
         }
-        */
+*/
         /**
          * If the scanner has more rows, get a new iterator else don't do anything.
          * @throws IOException
          */
         private void tryRefreshIterator() throws IOException {
+            LOG.warn("I was called : tryRefreshIterator");
             if (!scanner.hasMoreRows()) {
                 return;
             }
@@ -437,58 +620,39 @@ public class KuduTableInputFormat implements InputFormat, Configurable {
         }
 
         /*
+        Mapreduce code for reference
+
         @Override
         public NullWritable getCurrentKey() throws IOException, InterruptedException {
             return currentKey;
         }
-        */
-        /*
+
         @Override
         public RowResult getCurrentValue() throws IOException, InterruptedException {
             return currentValue;
         }
         */
+
         @Override
         public float getProgress() throws IOException {
+            LOG.warn("I was called : getProgress");
             // TODO Guesstimate progress
             return 0;
         }
 
-        @Override
-        public boolean next(NullWritable nullWritable, KuduWritable kuduWritable) throws IOException {
-            if (first) {
-                kuduWritable.set(0, 1);
-                kuduWritable.set(1, 'a');
-                first = false;
-                return true;
-            }
-            return false;
-        }
 
         @Override
-        public NullWritable createKey() {
-            return currentKey;
-        }
-
-        @Override
-        public KuduWritable createValue() {
-            return new KuduWritable(types);
-        }
-
-        @Override
-        public long getPos() throws IOException {
-            return 0;
-        }
-
-        @Override
-        public void close() throws IOException, NullPointerException {
+        public void close() throws IOException {
+            LOG.warn("I was called : close");
             try {
-                //scanner.close();
-                first = true;
-            } catch (Exception e) {
+                scanner.close();
+            } catch (NullPointerException npe) {
+                LOG.warn("The scanner is supposed to be open but its not. TODO: Fix me.");
+            }
+            catch (Exception e) {
                 throw new IOException(e);
             }
-            //shutdownClient();
+            shutdownClient();
         }
     }
 }

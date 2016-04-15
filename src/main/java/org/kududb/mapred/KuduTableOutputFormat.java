@@ -5,6 +5,7 @@ package org.kududb.mapred;
  */
 import com.cloudera.ps.HiveKudu.KuduHandler.KuduWritable;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.hive.metastore.api.OpenTxnRequest;
 import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordWriter;
@@ -23,6 +24,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -182,53 +184,65 @@ public class KuduTableOutputFormat implements OutputFormat, Configurable {
 
             for (int i = 0; i < recCount; i++) {
                 Object obj = kuduWritable.get(i);
+                LOG.warn("From Writable Column value of " + i + " is " + obj.toString() + " and type is " + kuduWritable.getType(i).name());
+                LOG.warn("From Schema Column name of " + i + " is " + schema.getColumnByIndex(i).getName());
                 switch(kuduWritable.getType(i)) {
                     case STRING: {
+                        LOG.warn("I was called : STRING");
                         String s = obj.toString();
                         row.addString(i, s);
                         break;
                     }
                     case FLOAT: {
+                        LOG.warn("I was called : FLOAT");
                         Float f = (Float) obj;
                         row.addFloat(i, f);
                         break;
                     }
                     case DOUBLE: {
+                        LOG.warn("I was called : DOUBLE");
                         Double d = (Double) obj;
                         row.addDouble(i, d);
                         break;
                     }
                     case BOOL: {
+                        LOG.warn("I was called : BOOL");
                         Boolean b = (Boolean) obj;
                         row.addBoolean(i, b);
                         break;
                     }
                     case INT8: {
+                        LOG.warn("I was called : INT8");
                         Byte b = (Byte) obj;
                         row.addByte(i, b);
                         break;
                     }
                     case INT16: {
+                        LOG.warn("I was called : INT16");
                         Short s = (Short) obj;
                         row.addShort(i, s);
                         break;
                     }
                     case INT32: {
+                        LOG.warn("I was called : INT32");
                         Integer x = (Integer) obj;
                         row.addInt(i, x);
                         break;
                     }
                     case INT64: {
+                        LOG.warn("I was called : INT64");
                         Long l = (Long) obj;
                         row.addLong(i, l);
                         break;
                     }
                     case TIMESTAMP: {
+                        LOG.warn("I was called : TIMESTAMP");
                         Long time = (Long) obj;
                         row.addLong(i, time);
                         break;
                     }
                     case BINARY: {
+                        LOG.warn("I was called : BINARY");
                         byte[] b = (byte[]) obj;
                         row.addBinary(i, b);
                         break;
@@ -238,6 +252,7 @@ public class KuduTableOutputFormat implements OutputFormat, Configurable {
                                 + obj.getClass().getSimpleName() + "' as type: " + kuduWritable.getType(i).name());
                 }
             }
+
             return insert;
         }
         @Override
@@ -246,9 +261,26 @@ public class KuduTableOutputFormat implements OutputFormat, Configurable {
             try {
                 LOG.warn("I was called : write");
                 Operation operation = getOperation(kw);
-
-                LOG.warn("applying operation ");
                 session.apply(operation);
+
+                //read from Kudu if the insert was successful
+                List<String> projectColumns = new ArrayList<>(2);
+                projectColumns.add("id");
+                projectColumns.add("name");
+                KuduScanner scanner = client.newScannerBuilder(table)
+                        .setProjectedColumnNames(projectColumns)
+                        .build();
+
+                while (scanner.hasMoreRows()) {
+                    RowResultIterator results = scanner.nextRows();
+                    while (results.hasNext()) {
+                        RowResult result = results.next();
+                        LOG.warn("Returned from kudu" + result.getInt(0) + ":" +result.getString(1));
+                    }
+                }
+
+                LOG.warn("applying operation");
+
             } catch (Exception e) {
                 throw new IOException("Encountered an error while writing", e);
             }

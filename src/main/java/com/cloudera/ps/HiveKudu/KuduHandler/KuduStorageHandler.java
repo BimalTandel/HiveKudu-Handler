@@ -25,7 +25,7 @@ import org.kududb.ColumnSchema;
 import org.kududb.Schema;
 import org.kududb.client.KuduClient;
 import org.kududb.client.CreateTableOptions;
-import org.kududb.mapred.KuduTableInputFormat;
+import org.kududb.mapred.HiveKuduTableInputFormat;
 import org.kududb.mapred.KuduTableOutputFormat;
 
 import java.util.*;
@@ -117,6 +117,11 @@ public class KuduStorageHandler extends DefaultStorageHandler
 
         jobProperties.put("kudu.mapreduce.output.table", tblProps.getProperty("kudu.table_name"));
         jobProperties.put("kudu.mapreduce.master.addresses", tblProps.getProperty("kudu.master_addresses"));
+
+        conf.set("kudu.mapreduce.input.table", tblProps.getProperty("kudu.table_name"));
+        conf.set("kudu.mapreduce.master.address", tblProps.getProperty("kudu.master_addresses"));
+        conf.set("kudu.mapreduce.name.server", "172.31.0.2");
+
     }
 
     @Override
@@ -128,7 +133,7 @@ public class KuduStorageHandler extends DefaultStorageHandler
 
     @Override
     public Class<? extends InputFormat> getInputFormatClass() {
-        return KuduTableInputFormat.class;
+        return HiveKuduTableInputFormat.class;
     }
 
     @Override
