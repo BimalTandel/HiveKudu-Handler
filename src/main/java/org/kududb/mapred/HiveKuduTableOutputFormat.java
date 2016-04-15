@@ -138,7 +138,6 @@ public class HiveKuduTableOutputFormat implements OutputFormat, Configurable {
         return new TableRecordWriter(this.session);
     }
 
-
     @Override
     public void checkOutputSpecs(FileSystem fileSystem, JobConf jobConf) throws IOException {
         LOG.warn("I was called : checkOutputSpecs");
