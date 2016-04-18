@@ -3,13 +3,25 @@ package org.kududb.mapred;
 /**
  * Created by bimal on 4/13/16.
  */
-import org.apache.hadoop.hive.kududb.KuduHandler.HiveKuduWritable;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.hive.kududb.KuduHandler.HiveKuduBridgeUtils;
+import org.apache.hadoop.hive.kududb.KuduHandler.HiveKuduConstants;
+import org.apache.hadoop.hive.kududb.KuduHandler.HiveKuduStruct;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.hive.ql.exec.FileSinkOperator;
+import org.apache.hadoop.hive.ql.io.AcidOutputFormat;
+import org.apache.hadoop.hive.ql.io.RecordUpdater;
+import org.apache.hadoop.hive.serde2.SerDeStats;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.StructField;
+import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
+import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordWriter;
 import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.util.Progressable;
 import org.kududb.Schema;
+import org.kududb.Type;
 import org.kududb.annotations.InterfaceAudience;
 import org.kududb.annotations.InterfaceStability;
 import org.kududb.client.*;
@@ -21,15 +33,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.InputMismatchException;
 import java.util.List;
+import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class HiveKuduTableOutputFormat implements OutputFormat, Configurable {
+public class HiveKuduTableOutputFormat implements OutputFormat<NullWritable, HiveKuduStruct>,
+        Configurable, AcidOutputFormat<NullWritable, HiveKuduStruct> {
 
     private static final Logger LOG = LoggerFactory.getLogger(HiveKuduTableOutputFormat.class);
 
@@ -58,6 +73,36 @@ public class HiveKuduTableOutputFormat implements OutputFormat, Configurable {
      */
     private static final ConcurrentHashMap<String, HiveKuduTableOutputFormat> MULTITON = new
             ConcurrentHashMap<String, HiveKuduTableOutputFormat>();
+
+    @Override
+    public RecordUpdater getRecordUpdater(Path path, Options options) throws IOException {
+        TableRecordWriter recordWriter = new TableRecordWriter(this.session);
+        return new TableRecordUpdater(recordWriter, options);
+    }
+
+    @Override
+    public FileSinkOperator.RecordWriter getRawRecordWriter(Path path, Options options) throws IOException {
+        return new DoNothingFSRecordWriter();
+    }
+
+    protected class DoNothingFSRecordWriter implements FileSinkOperator.RecordWriter{
+
+        @Override
+        public void write(Writable writable) throws IOException {
+            //Do nothing
+        }
+
+        @Override
+        public void close(boolean b) throws IOException {
+            //do nothing
+
+        }
+    }
+
+    @Override
+    public FileSinkOperator.RecordWriter getHiveRecordWriter(JobConf jobConf, Path path, Class aClass, boolean b, Properties properties, Progressable progressable) throws IOException {
+        return new DoNothingFSRecordWriter();
+    }
 
     /**
      * This counter helps indicate which task log to look at since rows that weren't applied will
@@ -152,7 +197,154 @@ public class HiveKuduTableOutputFormat implements OutputFormat, Configurable {
     }
     */
 
-    protected class TableRecordWriter implements RecordWriter<NullWritable, HiveKuduWritable> {
+    protected class TableRecordUpdater implements RecordUpdater {
+
+        private TableRecordWriter recordWriter;
+        private Options options;
+        private HiveKuduStruct cachedWritable;
+        private int fieldCount;
+
+        public TableRecordUpdater(TableRecordWriter rW, Options op) {
+            recordWriter = rW;
+            options = op;
+
+            String columnNameProperty = options.getTableProperties()
+                    .getProperty(HiveKuduConstants.LIST_COLUMNS);
+            String columnTypeProperty = options.getTableProperties()
+                    .getProperty(HiveKuduConstants.LIST_COLUMN_TYPES);
+
+            if (columnNameProperty.length() == 0
+                    && columnTypeProperty.length() == 0) {
+                //This is where we will implement option to connect to Kudu and get the column list using Serde.
+            }
+
+            List<String> columnNames = Arrays.asList(columnNameProperty.split(","));
+
+            String[] columnTypes = columnTypeProperty.split(":");
+
+            if (columnNames.size() != columnTypes.length) {
+                throw new InputMismatchException("Splitting column and types failed." + "columnNames: "
+                        + columnNames + ", columnTypes: "
+                        + Arrays.toString(columnTypes));
+            }
+
+            final Type[] types = new Type[columnTypes.length];
+
+            this.fieldCount = types.length;
+
+            for (int i = 0; i < types.length; i++) {
+                types[i] = HiveKuduBridgeUtils.hiveTypeToKuduType(columnTypes[i]);
+            }
+
+            this.cachedWritable = new HiveKuduStruct(types);
+        }
+
+        private HiveKuduStruct deserializeRow(Object row) throws IOException{
+
+            final StructObjectInspector structInspector = (StructObjectInspector)options.getInspector();
+
+            final List<? extends StructField> fields = structInspector.getAllStructFieldRefs();
+
+            if (fields.size() != fieldCount) {
+                throw new InputMismatchException(String.format(
+                        "Required %d columns, received %d.", fieldCount,
+                        fields.size()));
+            }
+
+            cachedWritable.clear();
+
+            for (int i = 0; i < fieldCount; i++) {
+                StructField structField = fields.get(i);
+                if (structField != null) {
+                    Object field = structInspector.getStructFieldData(row,
+                            structField);
+                    ObjectInspector fieldOI = structField.getFieldObjectInspector();
+
+                    Object javaObject = HiveKuduBridgeUtils.deparseObject(field,
+                            fieldOI);
+                    LOG.warn("Column value of " + i + " is " + javaObject.toString());
+                    cachedWritable.set(i, javaObject);
+                }
+            }
+            return cachedWritable;
+        }
+
+        @Override
+        public void insert(long l, Object o) throws IOException {
+            LOG.warn("ACID Insert was called but I do not do anything yet.");
+
+            HiveKuduStruct kw = deserializeRow(o);
+            try {
+                LOG.warn("I was called : insert");
+                Operation operation = recordWriter.getOperation(kw, HiveKuduStruct.OperationType.INSERT);
+                session.apply(operation);
+
+                LOG.warn("applying operation");
+
+            } catch (Exception e) {
+                throw new IOException("Encountered an error while writing", e);
+            }
+
+        }
+
+        @Override
+        public void update(long l, Object o) throws IOException {
+            LOG.warn("ACID update was called but I do not do anything yet.");
+
+            HiveKuduStruct kw = deserializeRow(o);
+            try {
+                LOG.warn("I was called : insert");
+                Operation operation = recordWriter.getOperation(kw, HiveKuduStruct.OperationType.UPDATE);
+                session.apply(operation);
+
+                LOG.warn("applying operation");
+
+            } catch (Exception e) {
+                throw new IOException("Encountered an error while writing", e);
+            }
+        }
+
+        @Override
+        public void delete(long l, Object o) throws IOException {
+            LOG.warn("ACID delete was called but I do not do anything yet.");
+            HiveKuduStruct kw = deserializeRow(o);
+            try {
+                LOG.warn("I was called : insert");
+                Operation operation = recordWriter.getOperation(kw, HiveKuduStruct.OperationType.UPDATE);
+                session.apply(operation);
+
+                LOG.warn("applying operation");
+
+            } catch (Exception e) {
+                throw new IOException("Encountered an error while writing", e);
+            }
+        }
+
+        @Override
+        public void flush() throws IOException {
+            LOG.warn("ACID flush was called but I do not do anything yet.");
+        }
+
+        @Override
+        public void close(boolean b) throws IOException {
+            LOG.warn("ACID close was called but I do not do anything yet.");
+
+            try {
+                LOG.warn("I was called : close");
+                recordWriter.processRowErrors(session.close());
+                shutdownClient();
+            } catch (Exception e) {
+                throw new IOException("Encountered an error while closing this task", e);
+            }
+        }
+
+        @Override
+        public SerDeStats getStats() {
+            return null;
+        }
+    }
+
+    protected class TableRecordWriter implements RecordWriter<NullWritable, HiveKuduStruct> {
 
         private final AtomicLong rowsWithErrors = new AtomicLong();
         private final KuduSession session;
@@ -162,10 +354,10 @@ public class HiveKuduTableOutputFormat implements OutputFormat, Configurable {
             this.session = session;
         }
 
-        private Operation getOperation(HiveKuduWritable hiveKuduWritable)
+        private Operation getOperation(HiveKuduStruct hiveKuduStruct, HiveKuduStruct.OperationType operationType)
             throws IOException{
             LOG.warn("I was called : getOperation");
-            int recCount = hiveKuduWritable.getColCount();
+            int recCount = hiveKuduStruct.getColCount();
             Schema schema = table.getSchema();
             int colCount = schema.getColumnCount();
             if (recCount != colCount) {
@@ -179,10 +371,10 @@ public class HiveKuduTableOutputFormat implements OutputFormat, Configurable {
             PartialRow row = insert.getRow();
 
             for (int i = 0; i < recCount; i++) {
-                Object obj = hiveKuduWritable.get(i);
-                LOG.warn("From Writable Column value of " + i + " is " + obj.toString() + " and type is " + hiveKuduWritable.getType(i).name());
+                Object obj = hiveKuduStruct.get(i);
+                LOG.warn("From Writable Column value of " + i + " is " + obj.toString() + " and type is " + hiveKuduStruct.getType(i).name());
                 LOG.warn("From Schema Column name of " + i + " is " + schema.getColumnByIndex(i).getName());
-                switch(hiveKuduWritable.getType(i)) {
+                switch(hiveKuduStruct.getType(i)) {
                     case STRING: {
                         LOG.warn("I was called : STRING");
                         String s = obj.toString();
@@ -245,35 +437,19 @@ public class HiveKuduTableOutputFormat implements OutputFormat, Configurable {
                     }
                     default:
                         throw new IOException("Cannot write Object '"
-                                + obj.getClass().getSimpleName() + "' as type: " + hiveKuduWritable.getType(i).name());
+                                + obj.getClass().getSimpleName() + "' as type: " + hiveKuduStruct.getType(i).name());
                 }
             }
 
             return insert;
         }
         @Override
-        public void write(NullWritable key, HiveKuduWritable kw)
+        public void write(NullWritable key, HiveKuduStruct kw)
                 throws IOException {
             try {
                 LOG.warn("I was called : write");
-                Operation operation = getOperation(kw);
+                Operation operation = getOperation(kw, HiveKuduStruct.OperationType.INSERT);
                 session.apply(operation);
-
-                //read from Kudu if the insert was successful
-                List<String> projectColumns = new ArrayList<>(2);
-                projectColumns.add("id");
-                projectColumns.add("name");
-                KuduScanner scanner = client.newScannerBuilder(table)
-                        .setProjectedColumnNames(projectColumns)
-                        .build();
-
-                while (scanner.hasMoreRows()) {
-                    RowResultIterator results = scanner.nextRows();
-                    while (results.hasNext()) {
-                        RowResult result = results.next();
-                        LOG.warn("Returned from kudu" + result.getInt(0) + ":" +result.getString(1));
-                    }
-                }
 
                 LOG.warn("applying operation");
 

@@ -41,9 +41,7 @@ import org.kududb.Schema;
 import org.kududb.client.KuduClient;
 import org.kududb.client.CreateTableOptions;
 import org.kududb.mapred.HiveKuduTableInputFormat;
-import org.kududb.mapred.HiveKuduTableOutputFormat;
 
-import java.io.IOException;
 import java.util.*;
 
 /**
@@ -68,7 +66,7 @@ public class KuduStorageHandler extends DefaultStorageHandler
 
     @Override
     public Class<? extends OutputFormat> getOutputFormatClass() {
-        return HiveKuduTableOutputFormat.class;
+        return HiveKuduOutputFormat.class;
     }
 
     @Override

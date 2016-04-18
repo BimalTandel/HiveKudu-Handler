@@ -24,7 +24,6 @@ import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.hive.serde2.SerDeStats;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory;
-import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
 import org.apache.hadoop.io.Writable;
 import org.kududb.Type;
@@ -43,12 +42,12 @@ public class HiveKuduSerDe implements SerDe {
 
     private static final Log LOG = LogFactory.getLog(HiveKuduSerDe.class);
 
-    private HiveKuduWritable cachedWritable; //Currently Update/Delete not supported from Hive.
+    private StructObjectInspector objectInspector;
+    private List<Object> deserializeCache;
 
     private int fieldCount;
 
-    private StructObjectInspector objectInspector;
-    private List<Object> deserializeCache;
+    private Type[] types;
 
     public HiveKuduSerDe() {
     }
@@ -56,13 +55,15 @@ public class HiveKuduSerDe implements SerDe {
     @Override
     public void initialize(Configuration sysConf, Properties tblProps)
         throws SerDeException {
-
         LOG.debug("tblProps: " + tblProps);
 
         String columnNameProperty = tblProps
                 .getProperty(HiveKuduConstants.LIST_COLUMNS);
         String columnTypeProperty = tblProps
                 .getProperty(HiveKuduConstants.LIST_COLUMN_TYPES);
+
+        LOG.info("Column Names: " + columnNameProperty);
+        LOG.info("Column Types: " + columnTypeProperty);
 
         if (columnNameProperty.length() == 0
                 && columnTypeProperty.length() == 0) {
@@ -79,13 +80,11 @@ public class HiveKuduSerDe implements SerDe {
                     + Arrays.toString(columnTypes));
         }
 
-        final Type[] types = new Type[columnTypes.length];
+        types = new Type[columnTypes.length];
 
         for (int i = 0; i < types.length; i++) {
             types[i] = HiveKuduBridgeUtils.hiveTypeToKuduType(columnTypes[i]);
         }
-
-        this.cachedWritable = new HiveKuduWritable(types);
 
         this.fieldCount = types.length;
 
@@ -97,9 +96,6 @@ public class HiveKuduSerDe implements SerDe {
         }
 
         this.objectInspector = ObjectInspectorFactory.getStandardStructObjectInspector(columnNames, fieldOIs);
-
-        this.deserializeCache = new ArrayList<>(columnTypes.length);
-
     }
 
     @Override
@@ -109,46 +105,21 @@ public class HiveKuduSerDe implements SerDe {
 
     @Override
     public Class<? extends Writable> getSerializedClass() {
-        return HiveKuduWritable.class;
+        return HiveKuduSerdeRow.class;
     }
 
     @Override
-    public HiveKuduWritable serialize(Object row, ObjectInspector inspector)
-        throws SerDeException {
-
-        final StructObjectInspector structInspector = (StructObjectInspector) inspector;
-        final List<? extends StructField> fields = structInspector.getAllStructFieldRefs();
-        if (fields.size() != fieldCount) {
-            throw new SerDeException(String.format(
-                    "Required %d columns, received %d.", fieldCount,
-                    fields.size()));
-        }
-
-        cachedWritable.clear();
-
-        for (int i = 0; i < fieldCount; i++) {
-            StructField structField = fields.get(i);
-            if (structField != null) {
-                Object field = structInspector.getStructFieldData(row,
-                        structField);
-                ObjectInspector fieldOI = structField.getFieldObjectInspector();
-
-                Object javaObject = HiveKuduBridgeUtils.deparseObject(field,
-                        fieldOI);
-                LOG.warn("Column value of " + i + " is " + javaObject.toString());
-                cachedWritable.set(i, javaObject);
-            }
-        }
-        return cachedWritable;
+    public HiveKuduSerdeRow serialize(Object row, ObjectInspector inspector) {
+        return new HiveKuduSerdeRow(row, inspector, types);
     }
 
     @Override
     public Object deserialize(Writable record) throws SerDeException {
-        if (!(record instanceof HiveKuduWritable)) {
-            throw new SerDeException("Expected HiveKuduWritable, received "
+        if (!(record instanceof HiveKuduStruct)) {
+            throw new SerDeException("Expected HiveKuduStruct, received "
                     + record.getClass().getName());
         }
-        HiveKuduWritable tuple = (HiveKuduWritable) record;
+        HiveKuduStruct tuple = (HiveKuduStruct) record;
         deserializeCache.clear();
         for (int i = 0; i < fieldCount; i++) {
             Object o = tuple.get(i);

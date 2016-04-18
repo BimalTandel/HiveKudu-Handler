@@ -28,17 +28,16 @@ import java.util.Arrays;
 /**
  * Created by bimal on 4/12/16.
  */
-public class HiveKuduWritable implements Writable {
-
+public class HiveKuduStruct implements Writable {
 
     private Object[] columnValues;
     private Type[] columnTypes;
 
-    public HiveKuduWritable() {
+    public HiveKuduStruct() {
 
     }
 
-    public HiveKuduWritable(Type[] types) {
+    public HiveKuduStruct(Type[] types) {
         this.columnValues = new Object[types.length];
         this.columnTypes = types;
     }
@@ -63,41 +62,10 @@ public class HiveKuduWritable implements Writable {
 
     @Override
     public void readFields(DataInput in) throws IOException {
-        int size = in.readInt();
-        if (size == -1) {
-            return;
-        }
-        if (columnValues == null) {
-            this.columnValues = new Object[size];
-            this.columnTypes = new Type[size];
-        } else {
-            clear();
-        }
-        for (int i = 0; i < size; i++) {
-            Type kuduType = WritableUtils.readEnum(in, Type.class);
-            columnTypes[i] = kuduType;
-            Object v = HiveKuduBridgeUtils.readObject(in, kuduType);
-            columnValues[i] = v;
-        }
+        throw new UnsupportedOperationException("readFields unsupported");
     }
     @Override
     public void write(DataOutput out) throws IOException {
-        if (columnValues == null) {
-            out.writeInt(-1);
-            return;
-        }
-        if (columnTypes == null) {
-            out.writeInt(-1);
-            return;
-        }
-
-        final Object[] values = this.columnValues;
-        final Type[] types = this.columnTypes;
-
-        out.writeInt(values.length);
-
-        for (int i = 0; i < values.length; i++) {
-            HiveKuduBridgeUtils.writeObject(values[i], types[i], out);
-        }
+        throw new UnsupportedOperationException("write unsupported");
     }
 }

@@ -16,6 +16,8 @@
 
 package org.apache.hadoop.hive.kududb.KuduHandler;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
@@ -26,6 +28,7 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.sql.Timestamp;
+import java.util.InputMismatchException;
 
 
 /**
@@ -33,7 +36,9 @@ import java.sql.Timestamp;
  */
 public class HiveKuduBridgeUtils {
 
-    public static Type hiveTypeToKuduType(String hiveType) throws SerDeException {
+    private static final Log LOG = LogFactory.getLog(HiveKuduBridgeUtils.class);
+
+    public static Type hiveTypeToKuduType(String hiveType) {
         final String lchiveType = hiveType.toLowerCase();
         switch(lchiveType) {
             case "string":
@@ -63,7 +68,7 @@ public class HiveKuduBridgeUtils {
             case "binary":
                 return Type.BINARY;
             default:
-                throw new SerDeException("Unrecognized column type: " + hiveType + " not supported in Kudu");
+                throw new InputMismatchException("Unrecognized column type: " + hiveType + " not supported in Kudu");
         }
     }
 
@@ -96,18 +101,77 @@ public class HiveKuduBridgeUtils {
         }
     }
 
-    public static Object deparseObject(Object field, ObjectInspector fieldOI)
-            throws SerDeException {
+    public static ObjectInspector getObjectInspector(Type kuduType) throws SerDeException {
+        switch (kuduType) {
+            case STRING:
+                return PrimitiveObjectInspectorFactory.javaStringObjectInspector;
+            case FLOAT:
+                return PrimitiveObjectInspectorFactory.javaFloatObjectInspector;
+            case DOUBLE:
+                return PrimitiveObjectInspectorFactory.javaDoubleObjectInspector;
+            case BOOL:
+                return PrimitiveObjectInspectorFactory.javaBooleanObjectInspector;
+            case INT8:
+                return PrimitiveObjectInspectorFactory.javaByteObjectInspector;
+            case INT16:
+                return PrimitiveObjectInspectorFactory.javaShortObjectInspector;
+            case INT32:
+                return PrimitiveObjectInspectorFactory.javaIntObjectInspector;
+            case INT64:
+                return PrimitiveObjectInspectorFactory.javaLongObjectInspector;
+            case TIMESTAMP:
+                return PrimitiveObjectInspectorFactory.javaTimestampObjectInspector;
+            case BINARY:
+                return PrimitiveObjectInspectorFactory.javaByteArrayObjectInspector;
+            default:
+                throw new SerDeException("Cannot find getObjectInspector for: "
+                        + kuduType.getName());
+        }
+    }
+
+    public static Type getKuduType(ObjectInspector oiType) throws SerDeException {
+        if ( oiType.getClass().getName().equals(PrimitiveObjectInspectorFactory.javaStringObjectInspector.getClass().getName())) {
+            return Type.STRING;
+        } else if ( oiType.getClass().getName().equals(PrimitiveObjectInspectorFactory.javaFloatObjectInspector.getClass().getName())) {
+            return Type.FLOAT;
+        } else if ( oiType.getClass().getName().equals(PrimitiveObjectInspectorFactory.javaDoubleObjectInspector.getClass().getName())) {
+            return Type.DOUBLE;
+        } else if ( oiType.getClass().getName().equals(PrimitiveObjectInspectorFactory.javaBooleanObjectInspector.getClass().getName())) {
+            return Type.BOOL;
+        } else if ( oiType.getClass().getName().equals(PrimitiveObjectInspectorFactory.javaByteObjectInspector.getClass().getName())) {
+            return Type.INT8;
+        } else if ( oiType.getClass().getName().equals(PrimitiveObjectInspectorFactory.javaShortObjectInspector.getClass().getName())) {
+            return Type.INT16;
+        } else if ( oiType.getClass().getName().equals(PrimitiveObjectInspectorFactory.javaIntObjectInspector.getClass().getName())) {
+            return Type.INT32;
+        } else if ( oiType.getClass().getName().equals(PrimitiveObjectInspectorFactory.javaLongObjectInspector.getClass().getName())) {
+            return Type.INT64;
+        } else if ( oiType.getClass().getName().equals(PrimitiveObjectInspectorFactory.javaTimestampObjectInspector.getClass().getName())) {
+            return Type.TIMESTAMP;
+        } else if ( oiType.getClass().getName().equals(PrimitiveObjectInspectorFactory.javaByteArrayObjectInspector.getClass().getName())) {
+            return Type.BINARY;
+        } else {
+            throw new SerDeException("Cannot find getObjectInspector for: "
+                    + oiType.getClass().getName());
+        }
+    }
+
+    public static Object deparseObject(Object field, ObjectInspector fieldOI) {
+        LOG.warn("FieldOI category is " + fieldOI.getCategory() + " typename " + fieldOI.getTypeName()
+            + "and is not " + ObjectInspector.Category.PRIMITIVE);
+
         switch (fieldOI.getCategory()) {
             case PRIMITIVE: {
                 PrimitiveObjectInspector oi = (PrimitiveObjectInspector) fieldOI;
                 return oi.getPrimitiveJavaObject(field);
             }
-
             //Kudu doesnt support LIST or MAP based data types
 
             default:
-                throw new SerDeException("Unexpected fieldOI: " + fieldOI);
+                LOG.warn("I dont expect to be here but while deleting record I am reaching here. FIX ME");
+                //throw new InputMismatchException("Unexpected fieldOI: " + fieldOI);
+                PrimitiveObjectInspector oi = (PrimitiveObjectInspector) fieldOI;
+                return oi.getPrimitiveJavaObject(field);
         }
     }
 
