@@ -259,22 +259,6 @@ public class HiveKuduTableOutputFormat implements OutputFormat, Configurable {
                 Operation operation = getOperation(kw);
                 session.apply(operation);
 
-                //read from Kudu if the insert was successful
-                List<String> projectColumns = new ArrayList<>(2);
-                projectColumns.add("id");
-                projectColumns.add("name");
-                KuduScanner scanner = client.newScannerBuilder(table)
-                        .setProjectedColumnNames(projectColumns)
-                        .build();
-
-                while (scanner.hasMoreRows()) {
-                    RowResultIterator results = scanner.nextRows();
-                    while (results.hasNext()) {
-                        RowResult result = results.next();
-                        LOG.warn("Returned from kudu" + result.getInt(0) + ":" +result.getString(1));
-                    }
-                }
-
                 LOG.warn("applying operation");
 
             } catch (Exception e) {

@@ -3,6 +3,7 @@ package org.kududb.mapred;
 /**
  * Created by bimal on 4/13/16.
  */
+import org.apache.hadoop.hive.kududb.KuduHandler.HiveKuduConstants;
 import org.apache.hadoop.hive.kududb.KuduHandler.HiveKuduWritable;
 import com.google.common.base.Objects;
 import com.google.common.base.Splitter;
@@ -268,7 +269,7 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
         InputSplit delegate = ((KuduHiveSplit) inputSplit).delegate;
         LOG.warn("I was called : getRecordReader");
         try {
-            return new TableRecordReader(delegate);
+            return new TableRecordReader(delegate, jobConf);
         } catch (InterruptedException e)
         {
             throw new IOException(e);
@@ -300,8 +301,7 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
                     "master address= " + masterAddresses, ex);
         }
 
-        //String projectionConfig = conf.get(COLUMN_PROJECTION_KEY);
-        String projectionConfig = "id,name";
+        String projectionConfig = conf.get(COLUMN_PROJECTION_KEY);
         if (projectionConfig == null || projectionConfig.equals("*")) {
             this.projectedCols = null; // project the whole table
         } else if ("".equals(projectionConfig)) {
@@ -451,15 +451,27 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
         private Type[] types;
         private boolean first = true;
 
-        public TableRecordReader(InputSplit inputSplit) throws IOException, InterruptedException {
+        public TableRecordReader(InputSplit inputSplit, JobConf jobConf) throws IOException, InterruptedException {
             LOG.warn("I was called : TableRecordReader");
             if (!(inputSplit instanceof TableSplit)) {
                 throw new IllegalArgumentException("TableSplit is the only accepted input split");
             }
 
+
             //Create another client
             //setConf(getConf());
 
+            String masterAddress =jobConf.get(HiveKuduConstants.MASTER_ADDRESS_NAME);
+
+            try {
+                LOG.warn("Checking if kuduClient is alive");
+                client.getTablesList();
+            } catch (Exception e) {
+                LOG.warn("Recreating KuduClient");
+                client = new KuduClient.KuduClientBuilder(masterAddress)
+                        .defaultOperationTimeoutMs(operationTimeoutMs)
+                        .build();
+            }
             split = (TableSplit) inputSplit;
             scanner = client.newScannerBuilder(table)
                     .setProjectedColumnNames(projectedCols)
@@ -468,14 +480,6 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
                     .cacheBlocks(cacheBlocks)
                     .addColumnRangePredicatesRaw(rawPredicates)
                     .build();
-
-            LOG.warn("table name: " +table.getName());
-            LOG.warn("projectedCols name: " + projectedCols.size());
-            LOG.warn("getStartPartitionKey: " + split.getStartPartitionKey().toString());
-            LOG.warn("getEndPartitionKey " + split.getEndPartitionKey().toString());
-            LOG.warn("cacheBlocks " + cacheBlocks);
-            LOG.warn("rawPredicates " + rawPredicates.length);
-
 
             Schema schema = table.getSchema();
             types = new Type[schema.getColumnCount()];
@@ -490,25 +494,6 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
         @Override
         public boolean next(NullWritable o, HiveKuduWritable o2) throws IOException {
             LOG.warn("I was called : next");
-            /*
-            if (first) {
-                //tryRefreshIterator();
-                List<String> projectColumns = new ArrayList<>(2);
-                projectColumns.add("id");
-                projectColumns.add("name");
-                KuduScanner scanner = client.newScannerBuilder(table)
-                        .setProjectedColumnNames(projectColumns)
-                        .build();
-                try {
-                    iterator = scanner.nextRows();
-                } catch (Exception e) {
-                    throw new IOException("Couldn't get scan data", e);
-                }
-                first = false;
-            } else {
-                return false;
-            }
-            */
             if (!iterator.hasNext()) {
                 tryRefreshIterator();
                 if (!iterator.hasNext()) {
