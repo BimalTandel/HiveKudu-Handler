@@ -1,3 +1,6 @@
+#Update April 29th 2016
+Hive on Spark is working but there is a connection drop in my InputFormat, which is currently running on a Band-Aid. Please use branch-0.0.2 if you want to use Hive on Spark.
+
 # HiveKudu-Handler
 Hive Kudu Storage Handler, Input & Output format, Writable and SerDe
 
