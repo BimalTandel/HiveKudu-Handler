@@ -9,14 +9,14 @@ import com.google.common.base.Splitter;
 import com.google.common.collect.Lists;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.Text;
-import org.kududb.Type;
+import org.apache.kudu.Type;
 import org.apache.commons.net.util.Base64;
 import org.apache.hadoop.mapred.*;
 import org.apache.hadoop.util.StringUtils;
-import org.kududb.Schema;
-import org.kududb.annotations.InterfaceAudience;
-import org.kududb.annotations.InterfaceStability;
-import org.kududb.client.*;
+import org.apache.kudu.Schema;
+import org.apache.kudu.annotations.InterfaceAudience;
+import org.apache.kudu.annotations.InterfaceStability;
+import org.apache.kudu.client.*;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configurable;
@@ -300,8 +300,8 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
                     "master address= " + masterAddresses, ex);
         }
 
-        //String projectionConfig = conf.get(COLUMN_PROJECTION_KEY);
-        String projectionConfig = "id,name";
+        String projectionConfig = conf.get(COLUMN_PROJECTION_KEY);
+//        String projectionConfig = "id,name";
         if (projectionConfig == null || projectionConfig.equals("*")) {
             this.projectedCols = null; // project the whole table
         } else if ("".equals(projectionConfig)) {
@@ -463,8 +463,8 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
             split = (TableSplit) inputSplit;
             scanner = client.newScannerBuilder(table)
                     .setProjectedColumnNames(projectedCols)
-                    .lowerBoundPartitionKeyRaw(split.getStartPartitionKey())
-                    .exclusiveUpperBoundPartitionKeyRaw(split.getEndPartitionKey())
+//                    .lowerBoundPartitionKeyRaw(split.getStartPartitionKey())
+//                    .exclusiveUpperBoundPartitionKeyRaw(split.getEndPartitionKey())
                     .cacheBlocks(cacheBlocks)
                     .addColumnRangePredicatesRaw(rawPredicates)
                     .build();
@@ -554,7 +554,7 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
                         o2.set(i, currentValue.getLong(i));
                         break;
                     }
-                    case TIMESTAMP: {
+                    case UNIXTIME_MICROS: {
                         o2.set(i, currentValue.getLong(i));
                         break;
                     }

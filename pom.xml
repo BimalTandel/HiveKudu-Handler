@@ -56,15 +56,15 @@
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>org.kududb</groupId>
+            <groupId>org.apache.kudu</groupId>
             <artifactId>kudu-client</artifactId>
-            <version>0.7.1</version>
+            <version>1.1.0</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
-            <groupId>org.kududb</groupId>
+            <groupId>org.apache.kudu</groupId>
             <artifactId>kudu-mapreduce</artifactId>
-            <version>0.7.1</version>
+            <version>1.7.1</version>
         </dependency>
     </dependencies>
 

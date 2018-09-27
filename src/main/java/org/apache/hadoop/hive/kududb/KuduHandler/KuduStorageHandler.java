@@ -36,10 +36,10 @@ import org.apache.hadoop.hive.serde2.SerDe;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.InputFormat;
 import org.apache.hadoop.mapred.OutputFormat;
-import org.kududb.ColumnSchema;
-import org.kududb.Schema;
-import org.kududb.client.KuduClient;
-import org.kududb.client.CreateTableOptions;
+import org.apache.kudu.ColumnSchema;
+import org.apache.kudu.Schema;
+import org.apache.kudu.client.KuduClient;
+import org.apache.kudu.client.CreateTableOptions;
 import org.kududb.mapred.HiveKuduTableInputFormat;
 import org.kududb.mapred.HiveKuduTableOutputFormat;
 

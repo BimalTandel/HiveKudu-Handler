@@ -20,7 +20,7 @@ import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
-import org.kududb.Type;
+import org.apache.kudu.Type;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -55,7 +55,7 @@ public class HiveKuduBridgeUtils {
                 return Type.DOUBLE;
 
             case "timestamp":
-                return Type.TIMESTAMP;
+                return Type.UNIXTIME_MICROS;
 
             case "boolean":
                 return Type.BOOL;
@@ -86,7 +86,7 @@ public class HiveKuduBridgeUtils {
                 return PrimitiveObjectInspectorFactory.javaIntObjectInspector;
             case INT64:
                 return PrimitiveObjectInspectorFactory.javaLongObjectInspector;
-            case TIMESTAMP:
+            case UNIXTIME_MICROS:
                 return PrimitiveObjectInspectorFactory.javaTimestampObjectInspector;
             case BINARY:
                 return PrimitiveObjectInspectorFactory.javaByteArrayObjectInspector;
@@ -131,7 +131,7 @@ public class HiveKuduBridgeUtils {
                 return Integer.valueOf(in.readInt());
             case INT64:
                 return Long.valueOf(in.readLong());
-            case TIMESTAMP: {
+            case UNIXTIME_MICROS: {
                 long time = in.readLong();
                 return new Timestamp(time);
             }
@@ -189,7 +189,7 @@ public class HiveKuduBridgeUtils {
                 out.writeLong(l.longValue());
                 return;
             }
-            case TIMESTAMP: {
+            case UNIXTIME_MICROS: {
                 Timestamp time = (Timestamp) obj;
                 out.writeLong(time.getTime());
                 return;
