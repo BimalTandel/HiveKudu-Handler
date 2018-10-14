@@ -240,6 +240,13 @@ public class KuduStorageHandler extends DefaultStorageHandler
 
         try {
             List<String> keyColumns = Arrays.asList(tbl.getParameters().get(HiveKuduConstants.KEY_COLUMNS).split("\\s*,\\s*"));
+            String partitionType = tbl.getParameters().get(HiveKuduConstants.PARTITION_TYPE);
+            if(!partitionType.equals("HASH")) { // Currently only hash partition is supported
+            	throw new MetaException("unsupported partition type "+ partitionType);
+            }
+            int numPartitions = Integer.parseInt(tbl.getParameters().get(HiveKuduConstants.NUM_PARTITION));
+            List<String> partitionColumns = Arrays.asList(tbl.getParameters().get(HiveKuduConstants.PARTITION_COLUMNS).split("\\s*,\\s*"));
+            int replicationFactor = Integer.parseInt(tbl.getParameters().getOrDefault(HiveKuduConstants.REPLICATION_FACTOR, "3"));
 
             List<FieldSchema> tabColumns = tbl.getSd().getCols();
 
@@ -262,8 +269,11 @@ public class KuduStorageHandler extends DefaultStorageHandler
             printSchema(schema);
 
             CreateTableOptions createTableOptions = new CreateTableOptions();
+            if(partitionType.toUpperCase().equals("HASH")) {  // Only hash partition is supported for now
+            	createTableOptions.addHashPartitions(partitionColumns, numPartitions);
+            }
+            createTableOptions.setNumReplicas(replicationFactor);
 
-            //TODO : add support for partition and buckets
             client.createTable(tablename, schema, createTableOptions);
 
         } catch (Exception se) {
