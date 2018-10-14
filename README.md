@@ -28,6 +28,10 @@ TBLPROPERTIES(
   'kudu.table_name' = 'test_drop',
   'kudu.master_addresses' = 'ip-172-31-56-74.ec2.internal:7051',
   'kudu.key_columns' = 'id'
+  'kudu.partition_type' = 'HASH',
+  'kudu.num_partition' = '2',
+  'kudu.partition_columns' = 'id',
+  'kudu.replication_factor' = '1'
 );
 
 describe formatted test_drop;
