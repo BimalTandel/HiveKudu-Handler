@@ -66,6 +66,33 @@ public class HiveKuduBridgeUtils {
                 throw new SerDeException("Unrecognized column type: " + hiveType + " not supported in Kudu");
         }
     }
+    
+    public static String kuduTypeToHiveType(Type kuduType) throws SerDeException {
+    	switch(kuduType) {
+    		case STRING:
+    			return "string";
+    		case INT8:
+    			return "tinyint";
+    		case INT16:
+    			return "smallint";
+    		case INT32:
+    			return "int";
+    		case INT64:
+    			return "bigint";
+    		case FLOAT:
+    			return "float";
+    		case DOUBLE:
+    			return "double";
+    		case UNIXTIME_MICROS:
+    			return "timestamp";
+    		case BOOL:
+    			return "boolean";
+    		case BINARY:
+    			return "binary";
+    		default:
+    			throw new SerDeException("Unrecognized kudu type "+kuduType);
+    	}
+    }
 
     public static ObjectInspector getObjectInspector(Type kuduType,
                                                      String hiveType) throws SerDeException {
