@@ -31,6 +31,8 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -46,7 +48,7 @@ import java.util.Map;
  * <p>
  * Hadoop doesn't have the concept of "closing" the input format so in order to release the
  * resources we assume that once either {@link #getSplits(org.apache.hadoop.mapred.JobConf, int)}
- * or {@link HiveKuduTableInputFormat.TableRecordReader#close()} have been called that
+ * or {@link HiveKuduTableInputFormat.KuduTableRecordReader#close()} have been called that
  * the object won't be used again and the AsyncKuduClient is shut down.
  * </p>
  */
@@ -101,134 +103,27 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
     private boolean cacheBlocks;
     private List<String> projectedCols;
     private byte[] rawPredicates;
-
-    static class KuduHiveSplit extends FileSplit {
-        InputSplit delegate;
-        private Path path;
-
-        KuduHiveSplit() {
-            this(new TableSplit(), null);
-        }
-
-        KuduHiveSplit(InputSplit delegate, Path path) {
-            super(path, 0, 0, (String[]) null);
-            this.delegate = delegate;
-            this.path = path;
-        }
-
-        public long getLength() {
-            // TODO: can this be delegated?
-            return 1L;
-        }
-
-        public String[] getLocations() throws IOException {
-            return delegate.getLocations();
-        }
-
-        public void write(DataOutput out) throws IOException {
-            Text.writeString(out, path.toString());
-            delegate.write(out);
-        }
-
-        public void readFields(DataInput in) throws IOException {
-            path = new Path(Text.readString(in));
-            delegate.readFields(in);
-        }
-
-        @Override
-        public String toString() {
-            return delegate.toString();
-        }
-
-        @Override
-        public Path getPath() {
-            return path;
-        }
+    private String kuduMasterAddress;
+    
+    private KuduClient makeKuduClient() {
+    	return new KuduClient.KuduClientBuilder(this.kuduMasterAddress)
+                .defaultOperationTimeoutMs(operationTimeoutMs)
+                .build();
     }
+
     @Override
-    public FileSplit[] getSplits(JobConf jobConf, int i)
+    public InputSplit[] getSplits(JobConf jobConf, int i)
             throws IOException {
-        LOG.warn("I was called : getSplits");
-        try {
+        
             if (table == null) {
                 throw new IOException("No table was provided");
             }
-            InputSplit[] splits;
-            DeadlineTracker deadline = new DeadlineTracker();
-            deadline.setDeadline(operationTimeoutMs);
-            // If the job is started while a leader election is running, we might not be able to find a
-            // leader right away. We'll wait as long as the user is willing to wait with the operation
-            // timeout, and once we've waited long enough we just start picking the first replica we see
-            // for those tablets that don't have a leader. The client will later try to find the leader
-            // and it might fail, in which case the task will get retried.
-            retryloop:
-            while (true) {
-                List<LocatedTablet> locations;
-                try {
-                    locations = table.getTabletsLocations(operationTimeoutMs);
-                } catch (Exception e) {
-                    throw new IOException("Could not get the tablets locations", e);
-                }
-
-                if (locations.isEmpty()) {
-                    throw new IOException("The requested table has 0 tablets, cannot continue");
-                }
-
-                // For the moment we only pass the leader since that's who we read from.
-                // If we've been trying to get a leader for each tablet for too long, we stop looping
-                // and just finish with what we have.
-                splits = new InputSplit[locations.size()];
-                int count = 0;
-                for (LocatedTablet locatedTablet : locations) {
-                    List<String> addresses = Lists.newArrayList();
-                    LocatedTablet.Replica replica = locatedTablet.getLeaderReplica();
-                    if (replica == null) {
-                        if (deadline.wouldSleepingTimeout(SLEEP_TIME_FOR_RETRIES_MS)) {
-                            LOG.debug("We ran out of retries, picking a non-leader replica for this tablet: " +
-                                    locatedTablet.toString());
-                            // We already checked it's not empty.
-                            replica = locatedTablet.getReplicas().get(0);
-                        } else {
-                            LOG.debug("Retrying creating the splits because this tablet is missing a leader: " +
-                                    locatedTablet.toString());
-                            try {
-                                Thread.sleep(SLEEP_TIME_FOR_RETRIES_MS);
-                            } catch (InterruptedException ioe) {
-                                throw new IOException(StringUtils.stringifyException(ioe));
-                            }
-
-                            continue retryloop;
-                        }
-                    }
-                    addresses.add(reverseDNS(replica.getRpcHost(), replica.getRpcPort()));
-                    String[] addressesArray = addresses.toArray(new String[addresses.size()]);
-                    Partition partition = locatedTablet.getPartition();
-                    TableSplit split = new TableSplit(partition.getPartitionKeyStart(),
-                            partition.getPartitionKeyEnd(),
-                            addressesArray);
-                    splits[count] = split;
-                    count++;
-                }
-                FileSplit[] wrappers = new FileSplit[splits.length];
-                Path path = new Path(jobConf.get("location"));
-                for (int counter = 0; counter < wrappers.length; counter++) {
-                    wrappers[counter] = new KuduHiveSplit(splits[counter], path);
-                }
-                return wrappers;
-            }
-        } finally {
-            //shutdownClient();
-            LOG.warn("This is a Bug. No need to shutdown client.");
-        }
-    }
-
-    private void shutdownClient() throws IOException {
-        LOG.warn("I was called : shutdownClient");
-        try {
-            client.shutdown();
-        } catch (Exception e) {
-            LOG.error("Error shutting down Kudu Client" + e);
-        }
+            
+            List<KuduScanToken> tokens = this.client.newScanTokenBuilder(table).build();
+            KuduTableSplit[] splits = new KuduTableSplit[tokens.size()];
+            for(int j=0; j<tokens.size(); ++j)
+            	splits[j] = KuduTableSplit.of(tokens.get(j));
+            return splits;
     }
 
     /**
@@ -265,10 +160,10 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
     public RecordReader<NullWritable, HiveKuduWritable> getRecordReader(InputSplit inputSplit,
                                                                         final JobConf jobConf, final Reporter reporter)
             throws IOException {
-        InputSplit delegate = ((KuduHiveSplit) inputSplit).delegate;
+    	KuduTableSplit tableSplit = (KuduTableSplit) inputSplit;
         LOG.warn("I was called : getRecordReader");
         try {
-            return new TableRecordReader(delegate);
+            return new KuduTableRecordReader(tableSplit, this.makeKuduClient());
         } catch (InterruptedException e)
         {
             throw new IOException(e);
@@ -277,50 +172,27 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
 
     @Override
     public void setConf(Configuration entries) {
-        LOG.warn("I was called : setConf");
+    	LOG.warn("I was called : setConf");
         this.conf = new Configuration(entries);
 
         String tableName = conf.get(INPUT_TABLE_KEY);
-        String masterAddresses = conf.get(MASTER_ADDRESSES_KEY);
+        this.kuduMasterAddress = conf.get(MASTER_ADDRESSES_KEY);
         this.operationTimeoutMs = conf.getLong(OPERATION_TIMEOUT_MS_KEY,
                 AsyncKuduClient.DEFAULT_OPERATION_TIMEOUT_MS);
         this.nameServer = conf.get(NAME_SERVER_KEY);
         this.cacheBlocks = conf.getBoolean(SCAN_CACHE_BLOCKS, false);
 
-        LOG.warn(" the master address here is " + masterAddresses);
+        LOG.warn(" the master address here is " + this.kuduMasterAddress);
 
-        this.client = new KuduClient.KuduClientBuilder(masterAddresses)
-                .defaultOperationTimeoutMs(operationTimeoutMs)
-                .build();
+        this.client = this.makeKuduClient();
         try {
             this.table = client.openTable(tableName);
         } catch (Exception ex) {
             throw new RuntimeException("Could not obtain the table from the master, " +
                     "is the master running and is this table created? tablename=" + tableName + " and " +
-                    "master address= " + masterAddresses, ex);
+                    "master address= " + this.kuduMasterAddress, ex);
         }
 
-        String projectionConfig = conf.get(COLUMN_PROJECTION_KEY);
-//        String projectionConfig = "id,name";
-        if (projectionConfig == null || projectionConfig.equals("*")) {
-            this.projectedCols = null; // project the whole table
-        } else if ("".equals(projectionConfig)) {
-            this.projectedCols = new ArrayList<>();
-        } else {
-            this.projectedCols = Lists.newArrayList(Splitter.on(',').split(projectionConfig));
-
-            // Verify that the column names are valid -- better to fail with an exception
-            // before we submit the job.
-            Schema tableSchema = table.getSchema();
-            for (String columnName : projectedCols) {
-                if (tableSchema.getColumn(columnName) == null) {
-                    throw new IllegalArgumentException("Unknown column " + columnName);
-                }
-            }
-        }
-
-        String encodedPredicates = conf.get(ENCODED_COLUMN_RANGE_PREDICATES_KEY, "");
-        rawPredicates = Base64.decodeBase64(encodedPredicates);
     }
 
     /**
@@ -441,42 +313,25 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
         }
     }
 
-    class TableRecordReader implements RecordReader<NullWritable, HiveKuduWritable> {
+    class KuduTableRecordReader implements RecordReader<NullWritable, HiveKuduWritable> {
 
         private final NullWritable currentKey = NullWritable.get();
         private RowResult currentValue;
         private RowResultIterator iterator;
         private KuduScanner scanner;
-        private TableSplit split;
+        private KuduTableSplit tableSplit;
         private Type[] types;
+        private KuduClient client;
         private boolean first = true;
+        private long rowCount;
 
-        public TableRecordReader(InputSplit inputSplit) throws IOException, InterruptedException {
+        public KuduTableRecordReader(KuduTableSplit tableSplit, KuduClient client) throws IOException, InterruptedException {
             LOG.warn("I was called : TableRecordReader");
-            if (!(inputSplit instanceof TableSplit)) {
-                throw new IllegalArgumentException("TableSplit is the only accepted input split");
-            }
 
-            //Create another client
-            //setConf(getConf());
-
-            split = (TableSplit) inputSplit;
-            scanner = client.newScannerBuilder(table)
-                    .setProjectedColumnNames(projectedCols)
-//                    .lowerBoundPartitionKeyRaw(split.getStartPartitionKey())
-//                    .exclusiveUpperBoundPartitionKeyRaw(split.getEndPartitionKey())
-                    .cacheBlocks(cacheBlocks)
-                    .addColumnRangePredicatesRaw(rawPredicates)
-                    .build();
-
-            LOG.warn("table name: " +table.getName());
-            LOG.warn("projectedCols name: " + projectedCols.size());
-            LOG.warn("getStartPartitionKey: " + split.getStartPartitionKey().toString());
-            LOG.warn("getEndPartitionKey " + split.getEndPartitionKey().toString());
-            LOG.warn("cacheBlocks " + cacheBlocks);
-            LOG.warn("rawPredicates " + rawPredicates.length);
-
-
+            this.tableSplit = tableSplit;
+            this.client = client;
+            scanner = KuduScanToken.deserializeIntoScanner(tableSplit.getScanTokenSerialized(), client);
+            
             Schema schema = table.getSchema();
             types = new Type[schema.getColumnCount()];
             for (int i = 0; i < types.length; i++) {
@@ -485,30 +340,15 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
             }
             // Calling this now to set iterator.
             tryRefreshIterator();
+            rowCount = 0L;
         }
 
         @Override
         public boolean next(NullWritable o, HiveKuduWritable o2) throws IOException {
             LOG.warn("I was called : next");
-            /*
-            if (first) {
-                //tryRefreshIterator();
-                List<String> projectColumns = new ArrayList<>(2);
-                projectColumns.add("id");
-                projectColumns.add("name");
-                KuduScanner scanner = client.newScannerBuilder(table)
-                        .setProjectedColumnNames(projectColumns)
-                        .build();
-                try {
-                    iterator = scanner.nextRows();
-                } catch (Exception e) {
-                    throw new IOException("Couldn't get scan data", e);
-                }
-                first = false;
-            } else {
-                return false;
-            }
-            */
+            
+            // TODO read from empty kudu table
+            
             if (!iterator.hasNext()) {
                 tryRefreshIterator();
                 if (!iterator.hasNext()) {
@@ -516,7 +356,7 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
                     return false;
                 }
             }
-
+            
             currentValue = iterator.next();
             o = currentKey;
             o2.clear();
@@ -555,7 +395,11 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
                         break;
                     }
                     case UNIXTIME_MICROS: {
-                        o2.set(i, currentValue.getLong(i));
+                    	long epoch_micros_seconds = currentValue.getLong(i);
+                    	long epoch_seconds = epoch_micros_seconds/1000000L;
+                    	long nano_seconds_adjustment = (epoch_micros_seconds%1000000L) * 1000L;
+                    	Instant instant = Instant.ofEpochSecond(epoch_seconds, nano_seconds_adjustment);
+                        o2.set(i, Timestamp.from(instant));
                         break;
                     }
                     case BINARY: {
@@ -567,7 +411,9 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
                                 + currentValue.getColumnType(i).name() + "' as type: " + types[i].name());
                 }
                 LOG.warn("Value returned " + o2.get(i));
-            }
+        	}
+            
+            this.rowCount += 1L;
             return true;
         }
 
@@ -586,24 +432,10 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
         @Override
         public long getPos() throws IOException {
             LOG.warn("I was called : getPos");
-            return 0;
+            return this.rowCount;
             //TODO: Get progress
         }
-/*
-        //mapreduce code for reference.
-        @Override
-        public boolean nextKeyValue() throws IOException, InterruptedException {
-            if (!iterator.hasNext()) {
-                tryRefreshIterator();
-                if (!iterator.hasNext()) {
-                    // Means we still have the same iterator, we're done
-                    return false;
-                }
-            }
-            currentValue = iterator.next();
-            return true;
-        }
-*/
+
         /**
          * If the scanner has more rows, get a new iterator else don't do anything.
          * @throws IOException
@@ -611,6 +443,7 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
         private void tryRefreshIterator() throws IOException {
             LOG.warn("I was called : tryRefreshIterator");
             if (!scanner.hasMoreRows()) {
+            	this.close();
                 return;
             }
             try {
@@ -653,7 +486,7 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
             catch (Exception e) {
                 throw new IOException(e);
             }
-            shutdownClient();
+//            this.client.close();
         }
     }
 }
