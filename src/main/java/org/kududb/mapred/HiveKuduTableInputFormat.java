@@ -4,6 +4,8 @@ package org.kududb.mapred;
  * Created by bimal on 4/13/16.
  */
 import org.apache.hadoop.hive.kududb.KuduHandler.HiveKuduWritable;
+import org.apache.hadoop.hive.kududb.KuduHandler.my_logger;
+
 import com.google.common.base.Objects;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Lists;
@@ -104,7 +106,7 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
     private List<String> projectedCols;
     private byte[] rawPredicates;
     private String kuduMasterAddress;
-    
+
     private KuduClient makeKuduClient() {
     	return new KuduClient.KuduClientBuilder(this.kuduMasterAddress)
                 .defaultOperationTimeoutMs(operationTimeoutMs)
@@ -115,16 +117,16 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
     public InputSplit[] getSplits(JobConf jobConf, int i)
             throws IOException {
         
-            if (table == null) {
-                throw new IOException("No table was provided");
-            }
-            
-            List<KuduScanToken> tokens = this.client.newScanTokenBuilder(table).build();
-            KuduTableSplit[] splits = new KuduTableSplit[tokens.size()];
-            for(int j=0; j<tokens.size(); ++j)
-            	splits[j] = KuduTableSplit.of(tokens.get(j));
-            return splits;
-    }
+		if (table == null) {
+			throw new IOException("No table was provided");
+		}
+
+		List<KuduScanToken> tokens = this.client.newScanTokenBuilder(table).build();
+		KuduTableSplit[] splits = new KuduTableSplit[tokens.size()];
+		for (int j = 0; j < tokens.size(); ++j)
+			splits[j] = KuduTableSplit.of(tokens.get(j));
+		return splits;
+	}
 
     /**
      * This method might seem alien, but we do this in order to resolve the hostnames the same way
@@ -155,20 +157,17 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
         }
         return location;
     }
-
-    @Override
-    public RecordReader<NullWritable, HiveKuduWritable> getRecordReader(InputSplit inputSplit,
-                                                                        final JobConf jobConf, final Reporter reporter)
-            throws IOException {
-    	KuduTableSplit tableSplit = (KuduTableSplit) inputSplit;
-        LOG.warn("I was called : getRecordReader");
-        try {
-            return new KuduTableRecordReader(tableSplit, this.makeKuduClient());
-        } catch (InterruptedException e)
-        {
-            throw new IOException(e);
-        }
-    }
+	@Override
+	public RecordReader<NullWritable, HiveKuduWritable> getRecordReader(InputSplit inputSplit, final JobConf jobConf,
+			final Reporter reporter) throws IOException {
+		KuduTableSplit tableSplit = (KuduTableSplit) inputSplit;
+		LOG.warn("I was called : getRecordReader");
+		try {
+			return new KuduTableRecordReader(tableSplit, this.makeKuduClient());
+		} catch (InterruptedException e) {
+			throw new IOException(e);
+		}
+	}
 
     @Override
     public void setConf(Configuration entries) {
@@ -193,7 +192,7 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
                     "master address= " + this.kuduMasterAddress, ex);
         }
 
-    }
+	}
 
     /**
      * Given a PTR string generated via reverse DNS lookup, return everything
@@ -219,99 +218,100 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
 
     static class TableSplit implements InputSplit, Writable, Comparable<TableSplit> {
 
-        private byte[] startPartitionKey;
-        private byte[] endPartitionKey;
-        private String[] locations;
+		private byte[] startPartitionKey;
+		private byte[] endPartitionKey;
+		private String[] locations;
 
-        public TableSplit() { } // Writable
+		public TableSplit() {
+		} // Writable
 
-        public TableSplit(byte[] startPartitionKey, byte[] endPartitionKey, String[] locations) {
-            LOG.warn("I was called : TableSplit");
-            this.startPartitionKey = startPartitionKey;
-            this.endPartitionKey = endPartitionKey;
-            this.locations = locations;
-        }
+		public TableSplit(byte[] startPartitionKey, byte[] endPartitionKey, String[] locations) {
+			LOG.warn("I was called : TableSplit");
+			this.startPartitionKey = startPartitionKey;
+			this.endPartitionKey = endPartitionKey;
+			this.locations = locations;
+		}
 
-        @Override
-        public long getLength() throws IOException {
-            // TODO Guesstimate a size
-            return 0;
-        }
+		@Override
+		public long getLength() throws IOException {
+			// TODO Guesstimate a size
+			return 0;
+		}
 
-        @Override
-        public String[] getLocations() throws IOException {
-            LOG.warn("I was called : getLocations");
-            return locations;
-        }
+		@Override
+		public String[] getLocations() throws IOException {
+			LOG.warn("I was called : getLocations");
+			return locations;
+		}
 
-        public byte[] getStartPartitionKey() {
-            return startPartitionKey;
-        }
+		public byte[] getStartPartitionKey() {
+			return startPartitionKey;
+		}
 
-        public byte[] getEndPartitionKey() {
-            return endPartitionKey;
-        }
+		public byte[] getEndPartitionKey() {
+			return endPartitionKey;
+		}
 
-        @Override
-        public int compareTo(TableSplit tableSplit) {
-            LOG.warn("I was called : compareTo");
-            return Bytes.memcmp(startPartitionKey, tableSplit.getStartPartitionKey());
-        }
+		@Override
+		public int compareTo(TableSplit tableSplit) {
+			LOG.warn("I was called : compareTo");
+			return Bytes.memcmp(startPartitionKey, tableSplit.getStartPartitionKey());
+		}
 
-        @Override
-        public void write(DataOutput dataOutput) throws IOException {
-            LOG.warn("I was called : write");
-            Bytes.writeByteArray(dataOutput, startPartitionKey);
-            Bytes.writeByteArray(dataOutput, endPartitionKey);
-            dataOutput.writeInt(locations.length);
-            for (String location : locations) {
-                byte[] str = Bytes.fromString(location);
-                Bytes.writeByteArray(dataOutput, str);
-            }
-        }
+		@Override
+		public void write(DataOutput dataOutput) throws IOException {
+			LOG.warn("I was called : write");
+			Bytes.writeByteArray(dataOutput, startPartitionKey);
+			Bytes.writeByteArray(dataOutput, endPartitionKey);
+			dataOutput.writeInt(locations.length);
+			for (String location : locations) {
+				byte[] str = Bytes.fromString(location);
+				Bytes.writeByteArray(dataOutput, str);
+			}
+		}
 
-        @Override
-        public void readFields(DataInput dataInput) throws IOException {
-            LOG.warn("I was called : readFields");
-            startPartitionKey = Bytes.readByteArray(dataInput);
-            endPartitionKey = Bytes.readByteArray(dataInput);
-            locations = new String[dataInput.readInt()];
-            LOG.warn("readFields " + locations.length);
-            for (int i = 0; i < locations.length; i++) {
-                byte[] str = Bytes.readByteArray(dataInput);
-                locations[i] = Bytes.getString(str);
-                LOG.warn("readFields " + locations[i]);
-            }
-        }
+		@Override
+		public void readFields(DataInput dataInput) throws IOException {
+			LOG.warn("I was called : readFields");
+			startPartitionKey = Bytes.readByteArray(dataInput);
+			endPartitionKey = Bytes.readByteArray(dataInput);
+			locations = new String[dataInput.readInt()];
+			LOG.warn("readFields " + locations.length);
+			for (int i = 0; i < locations.length; i++) {
+				byte[] str = Bytes.readByteArray(dataInput);
+				locations[i] = Bytes.getString(str);
+				LOG.warn("readFields " + locations[i]);
+			}
+		}
 
-        @Override
-        public int hashCode() {
-            LOG.warn("I was called : hashCode");
-            // We currently just care about the row key since we're within the same table
-            return Arrays.hashCode(startPartitionKey);
-        }
+		@Override
+		public int hashCode() {
+			LOG.warn("I was called : hashCode");
+			// We currently just care about the row key since we're within the same table
+			return Arrays.hashCode(startPartitionKey);
+		}
 
-        @Override
-        public boolean equals(Object o) {
-            LOG.warn("I was called : equals");
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
+		@Override
+		public boolean equals(Object o) {
+			LOG.warn("I was called : equals");
+			if (this == o)
+				return true;
+			if (o == null || getClass() != o.getClass())
+				return false;
 
-            TableSplit that = (TableSplit) o;
+			TableSplit that = (TableSplit) o;
 
-            return this.compareTo(that) == 0;
-        }
+			return this.compareTo(that) == 0;
+		}
 
-        @Override
-        public String toString() {
-            LOG.warn("I was called : toString");
-            return Objects.toStringHelper(this)
-                    .add("startPartitionKey", Bytes.pretty(startPartitionKey))
-                    .add("endPartitionKey", Bytes.pretty(endPartitionKey))
-                    .add("locations", Arrays.toString(locations))
-                    .toString();
-        }
-    }
+		@Override
+		public String toString() {
+			LOG.warn("I was called : toString");
+			return Objects.toStringHelper(this).add("startPartitionKey", Bytes.pretty(startPartitionKey))
+					.add("endPartitionKey", Bytes.pretty(endPartitionKey)).add("locations", Arrays.toString(locations))
+					.toString();
+		}
+	}
 
     class KuduTableRecordReader implements RecordReader<NullWritable, HiveKuduWritable> {
 
@@ -336,7 +336,7 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
             types = new Type[schema.getColumnCount()];
             for (int i = 0; i < types.length; i++) {
                 types[i] = schema.getColumnByIndex(i).getType();
-                LOG.warn("Setting types array "+ i + " to " + types[i].name());
+                LOG.warn("Setting types array " + i + " to " + types[i].name());
             }
             // Calling this now to set iterator.
             tryRefreshIterator();
@@ -346,82 +346,83 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
         @Override
         public boolean next(NullWritable o, HiveKuduWritable o2) throws IOException {
             LOG.warn("I was called : next");
-            
-            // TODO read from empty kudu table
-            
-            if (!iterator.hasNext()) {
-                tryRefreshIterator();
-                if (!iterator.hasNext()) {
-                    // Means we still have the same iterator, we're done
-                    return false;
-                }
-            }
-            
-            currentValue = iterator.next();
-            o = currentKey;
-            o2.clear();
-            for (int i = 0; i < types.length; i++) {
-                switch(types[i]) {
-                    case STRING: {
-                        o2.set(i, currentValue.getString(i));
-                        break;
-                    }
-                    case FLOAT: {
-                        o2.set(i, currentValue.getFloat(i));
-                        break;
-                    }
-                    case DOUBLE: {
-                        o2.set(i, currentValue.getDouble(i));
-                        break;
-                    }
-                    case BOOL: {
-                        o2.set(i, currentValue.getBoolean(i));
-                        break;
-                    }
-                    case INT8: {
-                        o2.set(i, currentValue.getByte(i));
-                        break;
-                    }
-                    case INT16: {
-                        o2.set(i, currentValue.getShort(i));
-                        break;
-                    }
-                    case INT32: {
-                        o2.set(i, currentValue.getInt(i));
-                        break;
-                    }
-                    case INT64: {
-                        o2.set(i, currentValue.getLong(i));
-                        break;
-                    }
-                    case UNIXTIME_MICROS: {
-                    	long epoch_micros_seconds = currentValue.getLong(i);
-                    	long epoch_seconds = epoch_micros_seconds/1000000L;
-                    	long nano_seconds_adjustment = (epoch_micros_seconds%1000000L) * 1000L;
-                    	Instant instant = Instant.ofEpochSecond(epoch_seconds, nano_seconds_adjustment);
-                        o2.set(i, Timestamp.from(instant));
-                        break;
-                    }
-                    case BINARY: {
-                        o2.set(i, currentValue.getBinaryCopy(i));
-                        break;
-                    }
-                    default:
-                        throw new IOException("Cannot write Object '"
-                                + currentValue.getColumnType(i).name() + "' as type: " + types[i].name());
-                }
-                LOG.warn("Value returned " + o2.get(i));
-        	}
-            
-            this.rowCount += 1L;
-            return true;
-        }
 
-        @Override
-        public NullWritable createKey() {
-            LOG.warn("I was called : createKey");
-            return NullWritable.get();
-        }
+			if (!iterator.hasNext()) {
+				tryRefreshIterator();
+				if (!iterator.hasNext()) {
+					// Means we still have the same iterator, we're done
+					return false;
+				}
+			}
+
+			currentValue = iterator.next();
+			o = currentKey;
+			o2.clear();
+			for (int i = 0; i < types.length; i++) {
+				if (currentValue.isNull(i))
+					o2.set(i, null);
+				else {
+					switch (types[i]) {
+					case STRING: {
+						o2.set(i, currentValue.getString(i));
+						break;
+					}
+					case FLOAT: {
+						o2.set(i, currentValue.getFloat(i));
+						break;
+					}
+					case DOUBLE: {
+						o2.set(i, currentValue.getDouble(i));
+						break;
+					}
+					case BOOL: {
+						o2.set(i, currentValue.getBoolean(i));
+						break;
+					}
+					case INT8: {
+						o2.set(i, currentValue.getByte(i));
+						break;
+					}
+					case INT16: {
+						o2.set(i, currentValue.getShort(i));
+						break;
+					}
+					case INT32: {
+						o2.set(i, currentValue.getInt(i));
+						break;
+					}
+					case INT64: {
+						o2.set(i, currentValue.getLong(i));
+						break;
+					}
+					case UNIXTIME_MICROS: {
+						long epoch_micros_seconds = currentValue.getLong(i);
+						long epoch_seconds = epoch_micros_seconds / 1000000L;
+						long nano_seconds_adjustment = (epoch_micros_seconds % 1000000L) * 1000L;
+						Instant instant = Instant.ofEpochSecond(epoch_seconds, nano_seconds_adjustment);
+						o2.set(i, Timestamp.from(instant));
+						break;
+					}
+					case BINARY: {
+						o2.set(i, currentValue.getBinaryCopy(i));
+						break;
+					}
+					default:
+						throw new IOException("Cannot write Object '" + currentValue.getColumnType(i).name()
+								+ "' as type: " + types[i].name());
+					}
+				}
+				LOG.warn("Value returned " + o2.get(i));
+			}
+			this.rowCount += 1L;
+			return true;
+		}
+
+		@Override
+		public NullWritable createKey() {
+			LOG.warn("I was called : createKey");
+			return NullWritable.get();
+		}
 
         @Override
         public HiveKuduWritable createValue() {
@@ -441,52 +442,46 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
          * @throws IOException
          */
         private void tryRefreshIterator() throws IOException {
-            LOG.warn("I was called : tryRefreshIterator");
-            if (!scanner.hasMoreRows()) {
-            	this.close();
-                return;
-            }
-            try {
-                iterator = scanner.nextRows();
-            } catch (Exception e) {
-                throw new IOException("Couldn't get scan data", e);
-            }
-        }
+			LOG.warn("I was called : tryRefreshIterator");
+			if (!scanner.hasMoreRows()) {
+				this.close();
+				return;
+			}
+			try {
+				iterator = scanner.nextRows();
+			} catch (Exception e) {
+				throw new IOException("Couldn't get scan data", e);
+			}
+		}
 
-        /*
-        Mapreduce code for reference
+		/*
+		 * Mapreduce code for reference
+		 * 
+		 * @Override public NullWritable getCurrentKey() throws IOException,
+		 * InterruptedException { return currentKey; }
+		 * 
+		 * @Override public RowResult getCurrentValue() throws IOException,
+		 * InterruptedException { return currentValue; }
+		 */
 
-        @Override
-        public NullWritable getCurrentKey() throws IOException, InterruptedException {
-            return currentKey;
-        }
+		@Override
+		public float getProgress() throws IOException {
+			LOG.warn("I was called : getProgress");
+			// TODO Guesstimate progress
+			return 0;
+		}
 
-        @Override
-        public RowResult getCurrentValue() throws IOException, InterruptedException {
-            return currentValue;
-        }
-        */
-
-        @Override
-        public float getProgress() throws IOException {
-            LOG.warn("I was called : getProgress");
-            // TODO Guesstimate progress
-            return 0;
-        }
-
-
-        @Override
-        public void close() throws IOException {
-            LOG.warn("I was called : close");
-            try {
-                scanner.close();
-            } catch (NullPointerException npe) {
-                LOG.warn("The scanner is supposed to be open but its not. TODO: Fix me.");
-            }
-            catch (Exception e) {
-                throw new IOException(e);
-            }
+		@Override
+		public void close() throws IOException {
+			LOG.warn("I was called : close");
+			try {
+				scanner.close();
+			} catch (NullPointerException npe) {
+				LOG.warn("The scanner is supposed to be open but its not. TODO: Fix me.");
+			} catch (Exception e) {
+				throw new IOException(e);
+			}
 //            this.client.close();
-        }
-    }
+		}
+	}
 }
