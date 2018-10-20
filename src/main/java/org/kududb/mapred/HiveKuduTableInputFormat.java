@@ -4,17 +4,9 @@ package org.kududb.mapred;
  * Created by bimal on 4/13/16.
  */
 import org.apache.hadoop.hive.kududb.KuduHandler.HiveKuduWritable;
-import org.apache.hadoop.hive.kududb.KuduHandler.my_logger;
 
-import com.google.common.base.Objects;
-import com.google.common.base.Splitter;
-import com.google.common.collect.Lists;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.io.Text;
 import org.apache.kudu.Type;
-import org.apache.commons.net.util.Base64;
 import org.apache.hadoop.mapred.*;
-import org.apache.hadoop.util.StringUtils;
 import org.apache.kudu.Schema;
 import org.apache.kudu.annotations.InterfaceAudience;
 import org.apache.kudu.annotations.InterfaceStability;
@@ -24,19 +16,14 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.NullWritable;
-import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.net.DNS;
 
 import javax.naming.NamingException;
-import java.io.DataInput;
-import java.io.DataOutput;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -103,8 +90,6 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
     private long operationTimeoutMs;
     private String nameServer;
     private boolean cacheBlocks;
-    private List<String> projectedCols;
-    private byte[] rawPredicates;
     private String kuduMasterAddress;
 
     private KuduClient makeKuduClient() {
@@ -216,103 +201,7 @@ public class HiveKuduTableInputFormat implements InputFormat, Configurable {
         return conf;
     }
 
-    static class TableSplit implements InputSplit, Writable, Comparable<TableSplit> {
-
-		private byte[] startPartitionKey;
-		private byte[] endPartitionKey;
-		private String[] locations;
-
-		public TableSplit() {
-		} // Writable
-
-		public TableSplit(byte[] startPartitionKey, byte[] endPartitionKey, String[] locations) {
-			LOG.warn("I was called : TableSplit");
-			this.startPartitionKey = startPartitionKey;
-			this.endPartitionKey = endPartitionKey;
-			this.locations = locations;
-		}
-
-		@Override
-		public long getLength() throws IOException {
-			// TODO Guesstimate a size
-			return 0;
-		}
-
-		@Override
-		public String[] getLocations() throws IOException {
-			LOG.warn("I was called : getLocations");
-			return locations;
-		}
-
-		public byte[] getStartPartitionKey() {
-			return startPartitionKey;
-		}
-
-		public byte[] getEndPartitionKey() {
-			return endPartitionKey;
-		}
-
-		@Override
-		public int compareTo(TableSplit tableSplit) {
-			LOG.warn("I was called : compareTo");
-			return Bytes.memcmp(startPartitionKey, tableSplit.getStartPartitionKey());
-		}
-
-		@Override
-		public void write(DataOutput dataOutput) throws IOException {
-			LOG.warn("I was called : write");
-			Bytes.writeByteArray(dataOutput, startPartitionKey);
-			Bytes.writeByteArray(dataOutput, endPartitionKey);
-			dataOutput.writeInt(locations.length);
-			for (String location : locations) {
-				byte[] str = Bytes.fromString(location);
-				Bytes.writeByteArray(dataOutput, str);
-			}
-		}
-
-		@Override
-		public void readFields(DataInput dataInput) throws IOException {
-			LOG.warn("I was called : readFields");
-			startPartitionKey = Bytes.readByteArray(dataInput);
-			endPartitionKey = Bytes.readByteArray(dataInput);
-			locations = new String[dataInput.readInt()];
-			LOG.warn("readFields " + locations.length);
-			for (int i = 0; i < locations.length; i++) {
-				byte[] str = Bytes.readByteArray(dataInput);
-				locations[i] = Bytes.getString(str);
-				LOG.warn("readFields " + locations[i]);
-			}
-		}
-
-		@Override
-		public int hashCode() {
-			LOG.warn("I was called : hashCode");
-			// We currently just care about the row key since we're within the same table
-			return Arrays.hashCode(startPartitionKey);
-		}
-
-		@Override
-		public boolean equals(Object o) {
-			LOG.warn("I was called : equals");
-			if (this == o)
-				return true;
-			if (o == null || getClass() != o.getClass())
-				return false;
-
-			TableSplit that = (TableSplit) o;
-
-			return this.compareTo(that) == 0;
-		}
-
-		@Override
-		public String toString() {
-			LOG.warn("I was called : toString");
-			return Objects.toStringHelper(this).add("startPartitionKey", Bytes.pretty(startPartitionKey))
-					.add("endPartitionKey", Bytes.pretty(endPartitionKey)).add("locations", Arrays.toString(locations))
-					.toString();
-		}
-	}
-
+    
     class KuduTableRecordReader implements RecordReader<NullWritable, HiveKuduWritable> {
 
         private final NullWritable currentKey = NullWritable.get();
