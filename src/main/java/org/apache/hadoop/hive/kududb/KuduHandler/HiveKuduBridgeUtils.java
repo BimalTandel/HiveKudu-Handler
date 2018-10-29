@@ -20,7 +20,7 @@ import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.PrimitiveObjectInspector;
 import org.apache.hadoop.hive.serde2.objectinspector.primitive.PrimitiveObjectInspectorFactory;
-import org.kududb.Type;
+import org.apache.kudu.Type;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -55,7 +55,7 @@ public class HiveKuduBridgeUtils {
                 return Type.DOUBLE;
 
             case "timestamp":
-                return Type.TIMESTAMP;
+                return Type.UNIXTIME_MICROS;
 
             case "boolean":
                 return Type.BOOL;
@@ -65,6 +65,33 @@ public class HiveKuduBridgeUtils {
             default:
                 throw new SerDeException("Unrecognized column type: " + hiveType + " not supported in Kudu");
         }
+    }
+    
+    public static String kuduTypeToHiveType(Type kuduType) throws SerDeException {
+    	switch(kuduType) {
+    		case STRING:
+    			return "string";
+    		case INT8:
+    			return "tinyint";
+    		case INT16:
+    			return "smallint";
+    		case INT32:
+    			return "int";
+    		case INT64:
+    			return "bigint";
+    		case FLOAT:
+    			return "float";
+    		case DOUBLE:
+    			return "double";
+    		case UNIXTIME_MICROS:
+    			return "timestamp";
+    		case BOOL:
+    			return "boolean";
+    		case BINARY:
+    			return "binary";
+    		default:
+    			throw new SerDeException("Unrecognized kudu type "+kuduType);
+    	}
     }
 
     public static ObjectInspector getObjectInspector(Type kuduType,
@@ -86,7 +113,7 @@ public class HiveKuduBridgeUtils {
                 return PrimitiveObjectInspectorFactory.javaIntObjectInspector;
             case INT64:
                 return PrimitiveObjectInspectorFactory.javaLongObjectInspector;
-            case TIMESTAMP:
+            case UNIXTIME_MICROS:
                 return PrimitiveObjectInspectorFactory.javaTimestampObjectInspector;
             case BINARY:
                 return PrimitiveObjectInspectorFactory.javaByteArrayObjectInspector;
@@ -131,7 +158,7 @@ public class HiveKuduBridgeUtils {
                 return Integer.valueOf(in.readInt());
             case INT64:
                 return Long.valueOf(in.readLong());
-            case TIMESTAMP: {
+            case UNIXTIME_MICROS: {
                 long time = in.readLong();
                 return new Timestamp(time);
             }
@@ -189,7 +216,7 @@ public class HiveKuduBridgeUtils {
                 out.writeLong(l.longValue());
                 return;
             }
-            case TIMESTAMP: {
+            case UNIXTIME_MICROS: {
                 Timestamp time = (Timestamp) obj;
                 out.writeLong(time.getTime());
                 return;

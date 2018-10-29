@@ -9,10 +9,10 @@ import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RecordWriter;
 import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.util.Progressable;
-import org.kududb.Schema;
-import org.kududb.annotations.InterfaceAudience;
-import org.kududb.annotations.InterfaceStability;
-import org.kududb.client.*;
+import org.apache.kudu.Schema;
+import org.apache.kudu.annotations.InterfaceAudience;
+import org.apache.kudu.annotations.InterfaceStability;
+import org.apache.kudu.client.*;
 import org.apache.hadoop.conf.Configurable;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.NullWritable;
@@ -231,7 +231,7 @@ public class HiveKuduTableOutputFormat implements OutputFormat, Configurable {
                         row.addLong(i, l);
                         break;
                     }
-                    case TIMESTAMP: {
+                    case UNIXTIME_MICROS: {
                         LOG.warn("I was called : TIMESTAMP");
                         Long time = (Long) obj;
                         row.addLong(i, time);

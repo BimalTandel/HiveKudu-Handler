@@ -28,6 +28,10 @@ public final class HiveKuduConstants {
     public static final String MASTER_ADDRESS_NAME = "kudu.master_addresses";
     public static final String TABLE_NAME = "kudu.table_name";
     public static final String KEY_COLUMNS = "kudu.key_columns";
+    public static final String PARTITION_TYPE = "kudu.partition_type";
+    public static final String NUM_PARTITION = "kudu.num_partition";
+    public static final String PARTITION_COLUMNS = "kudu.partition_columns";
+    public static final String REPLICATION_FACTOR = "kudu.replication_factor";
 
     //SerDe Properties
 

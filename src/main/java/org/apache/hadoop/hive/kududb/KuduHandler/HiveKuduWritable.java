@@ -18,12 +18,16 @@ package org.apache.hadoop.hive.kududb.KuduHandler;
 
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableUtils;
-import org.kududb.Type;
+import org.apache.kudu.Type;
 
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * Created by bimal on 4/12/16.
@@ -73,10 +77,17 @@ public class HiveKuduWritable implements Writable {
         } else {
             clear();
         }
+        
+        int nullCounts = in.readInt();
+        Set<Integer> nullIndices = new HashSet<Integer>();
+        for(int i=0; i<nullCounts; ++i)
+            nullIndices.add(in.readInt());
+        
         for (int i = 0; i < size; i++) {
             Type kuduType = WritableUtils.readEnum(in, Type.class);
             columnTypes[i] = kuduType;
-            Object v = HiveKuduBridgeUtils.readObject(in, kuduType);
+            Object v = (nullIndices.contains(i)) ? null: 
+            	HiveKuduBridgeUtils.readObject(in, kuduType);
             columnValues[i] = v;
         }
     }
@@ -93,11 +104,22 @@ public class HiveKuduWritable implements Writable {
 
         final Object[] values = this.columnValues;
         final Type[] types = this.columnTypes;
-
+        
         out.writeInt(values.length);
-
+        
+        Set<Integer> nullIndices = IntStream.range(0, values.length)
+            	.filter(x -> values[x] == null)
+            	.boxed()
+            	.collect(Collectors.toSet());
+            	
+        out.writeInt(nullIndices.size());
+        for(int idx:nullIndices)
+        	out.writeInt(idx);
+        
         for (int i = 0; i < values.length; i++) {
-            HiveKuduBridgeUtils.writeObject(values[i], types[i], out);
+        	WritableUtils.writeEnum(out, types[i]);
+        	if(!nullIndices.contains(i))
+        		HiveKuduBridgeUtils.writeObject(values[i], types[i], out);
         }
     }
 }

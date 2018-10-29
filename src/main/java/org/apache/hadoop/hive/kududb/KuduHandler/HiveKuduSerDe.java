@@ -19,7 +19,7 @@ package org.apache.hadoop.hive.kududb.KuduHandler;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hive.serde2.SerDe;
+import org.apache.hadoop.hive.serde2.AbstractSerDe;
 import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.hive.serde2.SerDeStats;
 import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
@@ -27,7 +27,7 @@ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory;
 import org.apache.hadoop.hive.serde2.objectinspector.StructField;
 import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
 import org.apache.hadoop.io.Writable;
-import org.kududb.Type;
+import org.apache.kudu.Type;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -39,7 +39,7 @@ import java.util.Properties;
  * Created by bimal on 4/12/16.
  */
 
-public class HiveKuduSerDe implements SerDe {
+public class HiveKuduSerDe extends AbstractSerDe {
 
     private static final Log LOG = LogFactory.getLog(HiveKuduSerDe.class);
 

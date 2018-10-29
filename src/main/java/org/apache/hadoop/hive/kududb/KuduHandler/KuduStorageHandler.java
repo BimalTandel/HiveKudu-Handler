@@ -23,6 +23,7 @@ import org.apache.hadoop.hive.metastore.HiveMetaHook;
 import org.apache.hadoop.hive.metastore.MetaStoreUtils;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.MetaException;
+import org.apache.hadoop.hive.metastore.api.StorageDescriptor;
 import org.apache.hadoop.hive.metastore.api.Table;
 import org.apache.hadoop.hive.ql.metadata.DefaultStorageHandler;
 import org.apache.hadoop.hive.ql.metadata.HiveException;
@@ -32,14 +33,17 @@ import org.apache.hadoop.hive.ql.plan.TableDesc;
 import org.apache.hadoop.hive.ql.security.authorization.DefaultHiveAuthorizationProvider;
 import org.apache.hadoop.hive.ql.security.authorization.HiveAuthorizationProvider;
 import org.apache.hadoop.hive.serde2.Deserializer;
-import org.apache.hadoop.hive.serde2.SerDe;
+import org.apache.hadoop.hive.serde2.SerDeException;
+import org.apache.hadoop.hive.serde2.AbstractSerDe;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.InputFormat;
 import org.apache.hadoop.mapred.OutputFormat;
-import org.kududb.ColumnSchema;
-import org.kududb.Schema;
-import org.kududb.client.KuduClient;
-import org.kududb.client.CreateTableOptions;
+import org.apache.kudu.ColumnSchema;
+import org.apache.kudu.Schema;
+import org.apache.kudu.client.KuduClient;
+import org.apache.kudu.client.KuduException;
+import org.apache.kudu.client.KuduTable;
+import org.apache.kudu.client.CreateTableOptions;
 import org.kududb.mapred.HiveKuduTableInputFormat;
 import org.kududb.mapred.HiveKuduTableOutputFormat;
 
@@ -72,7 +76,7 @@ public class KuduStorageHandler extends DefaultStorageHandler
     }
 
     @Override
-    public Class<? extends SerDe> getSerDeClass() {
+    public Class<? extends AbstractSerDe> getSerDeClass() {
         return HiveKuduSerDe.class;
     }
 
@@ -194,7 +198,8 @@ public class KuduStorageHandler extends DefaultStorageHandler
 
     private String getKuduTableName(Table tbl) {
 
-        String tableName = conf.get(HiveKuduConstants.TABLE_NAME);
+        String tableName = tbl.getParameters().getOrDefault(HiveKuduConstants.TABLE_NAME,  
+        		conf.get(HiveKuduConstants.TABLE_NAME));
         if (tableName == null) {
             LOG.warn("Kudu Table name was not provided in table properties.");
             LOG.warn("Attempting to use Hive Table name");
@@ -225,21 +230,50 @@ public class KuduStorageHandler extends DefaultStorageHandler
             throws MetaException {
         KuduClient client = getKuduClient(tbl.getParameters().get(HiveKuduConstants.MASTER_ADDRESS_NAME));
 
+        String tablename = getKuduTableName(tbl);
         boolean isExternal = MetaStoreUtils.isExternalTable(tbl);
 
         if (isExternal) {
-            //TODO: Check if Kudu table exists to allow external table.
-            //TODO: Check if column and types are compatible with existing Kudu table.
-            throw new MetaException("External Table to Kudu not yet supported.");
+        	try {
+	            //TODO: Check if Kudu table exists to allow external table.
+	            //TODO: Check if column and types are compatible with existing Kudu table.
+	            KuduTable kuduTable = client.openTable(tablename);
+	            List<ColumnSchema> kuduColumns = kuduTable.getSchema().getColumns();
+	            StorageDescriptor sd = tbl.getSd();
+	            List<FieldSchema> hiveCols = new ArrayList<FieldSchema>(kuduColumns.size());
+	            for(ColumnSchema kuduCol:kuduColumns) {
+	            	FieldSchema hiveFieldSchema = new FieldSchema(kuduCol.getName(), 
+	            			HiveKuduBridgeUtils.kuduTypeToHiveType(kuduCol.getType()), 
+	            			null);
+	            	hiveCols.add(hiveFieldSchema);
+	            }
+	            sd.setCols(hiveCols);
+	            return;
+        	}
+        	catch(SerDeException e) {
+        		throw new MetaException("unable to convet kudu schema to hive schema "+e.getMessage());
+        	}
+        	catch(KuduException e) {
+        		throw new MetaException("unable to open Kudu table "+tablename+". "+ e.getMessage());
+        	}
         }
+        
+        
+        // For internal tables
         if (tbl.getSd().getLocation() != null) {
             throw new MetaException("LOCATION may not be specified for Kudu");
         }
 
-        String tablename = getKuduTableName(tbl);
-
+        
         try {
             List<String> keyColumns = Arrays.asList(tbl.getParameters().get(HiveKuduConstants.KEY_COLUMNS).split("\\s*,\\s*"));
+            String partitionType = tbl.getParameters().get(HiveKuduConstants.PARTITION_TYPE);
+            if(!partitionType.equals("HASH")) { // Currently only hash partition is supported
+            	throw new MetaException("unsupported partition type "+ partitionType);
+            }
+            int numPartitions = Integer.parseInt(tbl.getParameters().get(HiveKuduConstants.NUM_PARTITION));
+            List<String> partitionColumns = Arrays.asList(tbl.getParameters().get(HiveKuduConstants.PARTITION_COLUMNS).split("\\s*,\\s*"));
+            int replicationFactor = Integer.parseInt(tbl.getParameters().getOrDefault(HiveKuduConstants.REPLICATION_FACTOR, "3"));
 
             List<FieldSchema> tabColumns = tbl.getSd().getCols();
 
@@ -262,8 +296,11 @@ public class KuduStorageHandler extends DefaultStorageHandler
             printSchema(schema);
 
             CreateTableOptions createTableOptions = new CreateTableOptions();
+            if(partitionType.toUpperCase().equals("HASH")) {  // Only hash partition is supported for now
+            	createTableOptions.addHashPartitions(partitionColumns, numPartitions);
+            }
+            createTableOptions.setNumReplicas(replicationFactor);
 
-            //TODO : add support for partition and buckets
             client.createTable(tablename, schema, createTableOptions);
 
         } catch (Exception se) {
