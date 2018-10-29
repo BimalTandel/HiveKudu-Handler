@@ -27,12 +27,24 @@ stored by 'org.apache.hadoop.hive.kududb.KuduHandler.KuduStorageHandler'
 TBLPROPERTIES(
   'kudu.table_name' = 'test_drop',
   'kudu.master_addresses' = 'ip-172-31-56-74.ec2.internal:7051',
-  'kudu.key_columns' = 'id'
-  'kudu.partition_type' = 'HASH',
+  'kudu.key_columns' = 'id'  -- comma separated column names to be used as primary key
+  'kudu.partition_type' = 'HASH', -- currently only HASH partition is supported
   'kudu.num_partition' = '2',
-  'kudu.partition_columns' = 'id',
+  'kudu.partition_columns' = 'id', --  comma separated partition columns (should be a subset of key_columns) 
   'kudu.replication_factor' = '1'
 );
+
+CREATE EXTERNAL TABLE test_drop (
+-- columns mentioned here for reference only (hive does not allow ommitting) and has no effect on table created. Actual columns picked up from Kudu table.
+id INT,
+name STRING
+)
+stored by 'org.apache.hadoop.hive.kududb.KuduHandler.KuduStorageHandler'
+TBLPROPERTIES(
+  'kudu.table_name' = 'test_drop',
+  'kudu.master_addresses' = 'ip-172-31-56-74.ec2.internal:7051'
+);
+
 
 describe formatted test_drop;
 
